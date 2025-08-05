@@ -1,241 +1,299 @@
 import React, { useState } from 'react';
-import { 
-  Coffee, 
-  DollarSign, 
-  Users, 
-  TrendingUp, 
-  Settings, 
-  FileText,
-  Plus,
-  Clock
-} from 'lucide-react';
+import { ArrowLeft, CreditCard, DollarSign, Calculator, CheckCircle } from 'lucide-react';
 
-interface DashboardProps {
-  tables: any[];
-  cashRegister: any;
-  todaysOrders: any[];
-  onTableClick: (table: any) => void;
-  onViewOrder: (table: any) => void;
-  onPayOrder: (table: any) => void;
-  onOpenCash: () => void;
-  onGoToMenuManager: () => void;
-  onGoToReports: () => void;
-  onGoToClosureHistory: () => void;
-  onShowSettings: () => void;
+interface PaymentProps {
+  order: any;
+  table: any;
+  onBack: () => void;
+  onProcessPayment: (paymentData: any) => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({
-  tables,
-  cashRegister,
-  todaysOrders,
-  onTableClick,
-  onViewOrder,
-  onPayOrder,
-  onOpenCash,
-  onGoToMenuManager,
- onGoToReports,
-  onGoToClosureHistory,
-  onShowSettings
+const Payment: React.FC<PaymentProps> = ({
+  order,
+  table,
+  onBack,
+  onProcessPayment
 }) => {
-  const paidOrders = todaysOrders.filter(order => order.status === 'paid');
-  const availableTables = tables.filter(t => t.status === 'available');
-  const occupiedTables = tables.filter(t => t.status === 'occupied');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card'>('cash');
+  const [currency, setCurrency] = useState<'CRC' | 'USD'>('CRC');
+  const [amountReceived, setAmountReceived] = useState<string>('');
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  const getTableStatusColor = (status: string) => {
-    switch (status) {
-      case 'available': return 'bg-gradient-to-br from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700';
-      case 'occupied': return 'bg-gradient-to-br from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700';
-      case 'reserved': return 'bg-gradient-to-br from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700';
-      case 'cleaning': return 'bg-gradient-to-br from-slate-500 to-gray-600 hover:from-slate-600 hover:to-gray-700';
-      default: return 'bg-gradient-to-br from-slate-500 to-gray-600';
+  const formatCurrency = (amount: number, curr: string = 'CRC') => {
+    if (curr === 'USD') {
+      return `$${amount.toFixed(2)}`;
     }
-  };
-
-  const getTableStatusText = (status: string) => {
-    switch (status) {
-      case 'available': return 'Disponible';
-      case 'occupied': return 'Ocupada';
-      case 'reserved': return 'Reservada';
-      case 'cleaning': return 'Limpieza';
-      default: return status;
-    }
-  };
-
-  const formatCurrency = (amount: number) => {
     return `₡${Math.round(amount).toLocaleString('es-CR')}`;
   };
 
+  const exchangeRate = 520; // 1 USD = 520 CRC (aproximado)
+
+  const convertAmount = (amount: number, fromCurrency: string, toCurrency: string) => {
+    if (fromCurrency === toCurrency) return amount;
+    if (fromCurrency === 'CRC' && toCurrency === 'USD') {
+      return amount / exchangeRate;
+    }
+    if (fromCurrency === 'USD' && toCurrency === 'CRC') {
+      return amount * exchangeRate;
+    }
+    return amount;
+  };
+
+  const getOrderTotal = () => {
+    if (currency === 'USD') {
+      return convertAmount(order.total, 'CRC', 'USD');
+    }
+    return order.total;
+  };
+
+  const getChange = () => {
+    const received = parseFloat(amountReceived) || 0;
+    const total = getOrderTotal();
+    return Math.max(0, received - total);
+  };
+
+  const canProcessPayment = () => {
+    if (paymentMethod === 'card') return true;
+    const received = parseFloat(amountReceived) || 0;
+    const total = getOrderTotal();
+    return received >= total;
+  };
+
+  const handleProcessPayment = async () => {
+    if (!canProcessPayment()) return;
+
+    setIsProcessing(true);
+
+    // Simular procesamiento
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    const paymentData = {
+      method: paymentMethod,
+      currency,
+      amount: paymentMethod === 'cash' ? parseFloat(amountReceived) : getOrderTotal(),
+      total: getOrderTotal(),
+      change: paymentMethod === 'cash' ? getChange() : 0,
+      orderId: order.id,
+      tableNumber: table.number
+    };
+
+    onProcessPayment(paymentData);
+    setIsProcessing(false);
+  };
+
+  const quickAmounts = currency === 'CRC' 
+    ? [1000, 2000, 5000, 10000, 20000]
+    : [5, 10, 20, 50, 100];
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
-      {/* Header Premium */}
+      {/* Header */}
       <div className="bg-white/80 backdrop-blur-xl border-b border-white/20 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 tablet:px-6 py-4 tablet:py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              <div className="p-2 tablet:p-3 bg-gradient-to-br from-blue-600 to-purple-700 rounded-2xl shadow-lg">
-                <Coffee className="w-6 tablet:w-8 h-6 tablet:h-8 text-white" />
-              </div>
+              <button
+                onClick={onBack}
+                className="p-2 tablet:p-3 hover:bg-white/50 rounded-2xl transition-all duration-300 hover:scale-110"
+              >
+                <ArrowLeft className="w-6 tablet:w-7 h-6 tablet:h-7 text-slate-600" />
+              </button>
               <div>
-                <h1 className="text-2xl tablet:text-3xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 bg-clip-text text-transparent">
-                  Restaurante Fischer
+                <h1 className="text-xl tablet:text-2xl font-bold text-slate-800">
+                  Procesar Pago - Mesa {table?.number}
                 </h1>
-                <p className="text-sm tablet:text-base text-slate-500 font-medium">Sistema POS Profesional</p>
+                <p className="text-sm tablet:text-base text-slate-500">
+                  {order?.items?.length || 0} productos • Total: {formatCurrency(getOrderTotal(), currency)}
+                </p>
               </div>
             </div>
             
             <div className="text-right">
-              <p className="text-xs tablet:text-sm text-slate-500 font-medium">
-                {new Date().toLocaleDateString('es-CR', { 
-                  weekday: 'long', 
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
-                })}
+              <p className="text-lg tablet:text-xl font-bold text-emerald-600">
+                {formatCurrency(getOrderTotal(), currency)}
               </p>
-              <p className="text-xl tablet:text-2xl font-bold text-slate-800">
-                {new Date().toLocaleTimeString('es-CR', { 
-                  hour: '2-digit', 
-                  minute: '2-digit' 
-                })}
+              <p className="text-sm text-slate-500">
+                Total a cobrar
               </p>
             </div>
-            
-            {/* Settings Button */}
-            <button
-              onClick={onShowSettings}
-              className="p-3 tablet:p-4 hover:bg-white/50 rounded-2xl transition-all duration-300 hover:scale-110 group"
-              title="Configuración del Sistema"
-            >
-              <Settings className="w-6 tablet:w-7 h-6 tablet:h-7 text-slate-600 group-hover:text-blue-600 transition-colors" />
-            </button>
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto p-4 tablet:p-6">
-        {/* Stats Cards Premium */}
-        <div className="grid grid-cols-2 tablet:grid-cols-4 gap-4 tablet:gap-6 mb-6 tablet:mb-8">
-          <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-4 tablet:p-6 hover:shadow-2xl transition-all duration-300 hover:scale-105">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs tablet:text-sm font-semibold text-slate-500 uppercase tracking-wide">Efectivo CRC</p>
-                <p className="text-xl tablet:text-3xl font-bold text-slate-800 mt-1">
-                  {formatCurrency(cashRegister?.currentCashCRC || 0)}
-                </p>
-              </div>
-              <div className="p-2 tablet:p-3 bg-gradient-to-br from-emerald-500 to-green-600 rounded-xl">
-                <DollarSign className="w-6 tablet:w-8 h-6 tablet:h-8 text-white" />
-              </div>
-            </div>
-          </div>
+      <div className="max-w-4xl mx-auto p-4 tablet:p-6">
+        <div className="grid grid-cols-1 tablet:grid-cols-2 gap-6">
+          {/* Order Summary */}
+          <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-4 tablet:p-6">
+            <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center">
+              <CheckCircle className="w-6 h-6 mr-3 text-emerald-600" />
+              Resumen de Orden
+            </h2>
 
-          <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-4 tablet:p-6 hover:shadow-2xl transition-all duration-300 hover:scale-105">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs tablet:text-sm font-semibold text-slate-500 uppercase tracking-wide">Efectivo USD</p>
-                <p className="text-xl tablet:text-3xl font-bold text-slate-800 mt-1">
-                  ${(cashRegister?.currentCashUSD || 0).toFixed(2)}
-                </p>
-              </div>
-              <div className="p-2 tablet:p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl">
-                <DollarSign className="w-6 tablet:w-8 h-6 tablet:h-8 text-white" />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-4 tablet:p-6 hover:shadow-2xl transition-all duration-300 hover:scale-105">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs tablet:text-sm font-semibold text-slate-500 uppercase tracking-wide">Órdenes Hoy</p>
-                <p className="text-xl tablet:text-3xl font-bold text-slate-800 mt-1">{paidOrders.length}</p>
-              </div>
-              <div className="p-2 tablet:p-3 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl">
-                <FileText className="w-6 tablet:w-8 h-6 tablet:h-8 text-white" />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-4 tablet:p-6 hover:shadow-2xl transition-all duration-300 hover:scale-105">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs tablet:text-sm font-semibold text-slate-500 uppercase tracking-wide">Mesas Ocupadas</p>
-                <p className="text-xl tablet:text-3xl font-bold text-slate-800 mt-1">
-                  {occupiedTables.length}/{tables.length}
-                </p>
-              </div>
-              <div className="p-2 tablet:p-3 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl">
-                <Users className="w-6 tablet:w-8 h-6 tablet:h-8 text-white" />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Action Buttons Premium */}
-
-        {/* Tables Grid Premium */}
-        <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-6 tablet:p-8">
-          <h2 className="text-xl tablet:text-2xl font-bold text-slate-800 mb-6 tablet:mb-8 flex items-center">
-            <Users className="w-6 tablet:w-7 h-6 tablet:h-7 mr-3 text-blue-600" />
-            Estado de Mesas
-          </h2>
-          
-          <div className="grid grid-cols-3 tablet:grid-cols-5 gap-4 tablet:gap-6">
-            {tables.map((table) => (
-              <div key={table.id} className="relative group">
-                <div
-                  className={`${getTableStatusColor(table.status)} text-white rounded-2xl p-4 tablet:p-6 cursor-pointer transition-all duration-300 transform hover:scale-110 shadow-xl hover:shadow-2xl backdrop-blur-sm`}
-                  onClick={() => onTableClick(table)}
-                >
-                  <div className="text-center">
-                    <div className="text-xl tablet:text-2xl font-bold mb-2">Mesa {table.number}</div>
-                    <div className="text-xs tablet:text-sm opacity-90 font-medium">{getTableStatusText(table.status)}</div>
-                    <div className="text-xs opacity-75 mt-2 flex items-center justify-center">
-                      <Users className="w-3 h-3 mr-1" />
-                      {table.seats} personas
-                    </div>
-                    
-                    {table.currentOrder && (
-                      <div className="mt-4 pt-4 border-t border-white/30">
-                        <div className="text-xs tablet:text-sm font-bold">
-                          {formatCurrency(table.currentOrder.total)}
-                        </div>
-                        <div className="text-xs opacity-75 flex items-center justify-center mt-1">
-                          <Clock className="w-3 h-3 mr-1" />
-                          {new Date(table.currentOrder.createdAt).toLocaleTimeString('es-CR', {
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </div>
-                      </div>
+            <div className="space-y-4 mb-6">
+              {order?.items?.map((item: any) => (
+                <div key={item.id} className="flex justify-between items-center py-2 border-b border-slate-200">
+                  <div>
+                    <span className="font-medium text-slate-800">{item.menuItem.name}</span>
+                    <span className="text-slate-500 ml-2">x{item.quantity}</span>
+                    {item.notes && (
+                      <p className="text-xs text-slate-400 mt-1">{item.notes}</p>
                     )}
                   </div>
+                  <span className="font-bold text-slate-800">
+                    {formatCurrency(convertAmount(item.subtotal, 'CRC', currency), currency)}
+                  </span>
                 </div>
-                
-                {/* Action Buttons for Occupied Tables */}
-                {table.status === 'occupied' && table.currentOrder && (
-                  <div className="absolute -bottom-3 left-1/2 transform -translate-x-1/2 flex space-x-1 tablet:space-x-2 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+              ))}
+            </div>
+
+            <div className="border-t border-slate-300 pt-4 space-y-2">
+              <div className="flex justify-between text-slate-600">
+                <span>Subtotal:</span>
+                <span>{formatCurrency(convertAmount(order.subtotal, 'CRC', currency), currency)}</span>
+              </div>
+              <div className="flex justify-between text-slate-600">
+                <span>Servicio (10%):</span>
+                <span>{formatCurrency(convertAmount(order.serviceCharge, 'CRC', currency), currency)}</span>
+              </div>
+              <div className="flex justify-between text-xl font-bold text-slate-800 border-t pt-2">
+                <span>Total:</span>
+                <span>{formatCurrency(getOrderTotal(), currency)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Payment Form */}
+          <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-4 tablet:p-6">
+            <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center">
+              <DollarSign className="w-6 h-6 mr-3 text-blue-600" />
+              Método de Pago
+            </h2>
+
+            {/* Currency Selection */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-slate-700 mb-3">Moneda</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setCurrency('CRC')}
+                  className={`p-3 rounded-xl font-medium transition-all duration-300 ${
+                    currency === 'CRC'
+                      ? 'bg-gradient-to-r from-blue-600 to-purple-700 text-white shadow-lg'
+                      : 'bg-white/50 text-slate-600 hover:bg-white/80'
+                  }`}
+                >
+                  Colones (₡)
+                </button>
+                <button
+                  onClick={() => setCurrency('USD')}
+                  className={`p-3 rounded-xl font-medium transition-all duration-300 ${
+                    currency === 'USD'
+                      ? 'bg-gradient-to-r from-blue-600 to-purple-700 text-white shadow-lg'
+                      : 'bg-white/50 text-slate-600 hover:bg-white/80'
+                  }`}
+                >
+                  Dólares ($)
+                </button>
+              </div>
+            </div>
+
+            {/* Payment Method Selection */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-slate-700 mb-3">Método de Pago</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setPaymentMethod('cash')}
+                  className={`flex items-center justify-center space-x-2 p-4 rounded-xl font-medium transition-all duration-300 ${
+                    paymentMethod === 'cash'
+                      ? 'bg-gradient-to-r from-emerald-600 to-green-700 text-white shadow-lg'
+                      : 'bg-white/50 text-slate-600 hover:bg-white/80'
+                  }`}
+                >
+                  <DollarSign className="w-5 h-5" />
+                  <span>Efectivo</span>
+                </button>
+                <button
+                  onClick={() => setPaymentMethod('card')}
+                  className={`flex items-center justify-center space-x-2 p-4 rounded-xl font-medium transition-all duration-300 ${
+                    paymentMethod === 'card'
+                      ? 'bg-gradient-to-r from-emerald-600 to-green-700 text-white shadow-lg'
+                      : 'bg-white/50 text-slate-600 hover:bg-white/80'
+                  }`}
+                >
+                  <CreditCard className="w-5 h-5" />
+                  <span>Tarjeta</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Cash Payment Form */}
+            {paymentMethod === 'cash' && (
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-slate-700 mb-3">
+                  Monto Recibido
+                </label>
+                <input
+                  type="number"
+                  value={amountReceived}
+                  onChange={(e) => setAmountReceived(e.target.value)}
+                  placeholder={`Ingrese monto en ${currency}`}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-lg font-medium"
+                />
+
+                {/* Quick Amount Buttons */}
+                <div className="grid grid-cols-5 gap-2 mt-3">
+                  {quickAmounts.map((amount) => (
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onViewOrder(table);
-                      }}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-2 tablet:px-3 py-1 rounded-lg text-xs font-bold transition-colors shadow-lg"
+                      key={amount}
+                      onClick={() => setAmountReceived(amount.toString())}
+                      className="p-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-medium transition-colors"
                     >
-                      Ver
+                      {formatCurrency(amount, currency)}
                     </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onPayOrder(table);
-                      }}
-                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-2 tablet:px-3 py-1 rounded-lg text-xs font-bold transition-colors shadow-lg"
-                    >
-                      Cobrar
-                    </button>
+                  ))}
+                </div>
+
+                {/* Change Calculation */}
+                {amountReceived && (
+                  <div className="mt-4 p-4 bg-slate-50 rounded-xl">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-600">Cambio:</span>
+                      <span className="text-xl font-bold text-emerald-600">
+                        {formatCurrency(getChange(), currency)}
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
-            ))}
+            )}
+
+            {/* Process Payment Button */}
+            <button
+              onClick={handleProcessPayment}
+              disabled={!canProcessPayment() || isProcessing}
+              className={`w-full py-4 rounded-xl font-bold text-lg transition-all duration-300 flex items-center justify-center space-x-2 ${
+                canProcessPayment() && !isProcessing
+                  ? 'bg-gradient-to-r from-emerald-600 to-green-700 hover:from-emerald-700 hover:to-green-800 text-white shadow-lg hover:scale-105'
+                  : 'bg-slate-300 text-slate-500 cursor-not-allowed'
+              }`}
+            >
+              {isProcessing ? (
+                <>
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                  <span>Procesando...</span>
+                </>
+              ) : (
+                <>
+                  <Calculator className="w-5 h-5" />
+                  <span>Procesar Pago</span>
+                </>
+              )}
+            </button>
+
+            {paymentMethod === 'cash' && !canProcessPayment() && amountReceived && (
+              <p className="text-red-500 text-sm mt-2 text-center">
+                El monto recibido debe ser mayor o igual al total
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -243,4 +301,4 @@ const Dashboard: React.FC<DashboardProps> = ({
   );
 };
 
-export default Dashboard;
+export default Payment;
