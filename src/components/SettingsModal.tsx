@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { 
   X, 
@@ -6,7 +7,9 @@ import {
   TrendingUp,
   DollarSign,
   Clock,
-  Calendar
+  Calendar,
+  Receipt,
+  BarChart3
 } from 'lucide-react';
 
 interface SettingsModalProps {
@@ -18,6 +21,8 @@ interface SettingsModalProps {
   onGoToMenuManager: () => void;
   onGoToReports: () => void;
   onGoToClosureHistory: () => void;
+  onGoToExpenses: () => void;
+  onGoToFinancialReports: () => void;
 }
 
 const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -28,7 +33,9 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
   onCloseCash,
   onGoToMenuManager,
   onGoToReports,
-  onGoToClosureHistory
+  onGoToClosureHistory,
+  onGoToExpenses,
+  onGoToFinancialReports
 }) => {
   if (!isOpen) return null;
 
@@ -166,6 +173,28 @@ const SettingsModal: React.FC<SettingsModalProps> = ({
               >
                 <Calendar className="w-6 h-6" />
                 <span>Historial de Cierres</span>
+              </button>
+              
+              <button
+                onClick={() => {
+                  onClose();
+                  onGoToExpenses();
+                }}
+                className="w-full bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 text-white py-4 rounded-2xl font-bold transition-all duration-300 flex items-center justify-center space-x-3 shadow-xl hover:shadow-2xl hover:scale-105"
+              >
+                <Receipt className="w-6 h-6" />
+                <span>Gestión de Gastos</span>
+              </button>
+              
+              <button
+                onClick={() => {
+                  onClose();
+                  onGoToFinancialReports();
+                }}
+                className="w-full bg-gradient-to-r from-green-600 to-emerald-700 hover:from-green-700 hover:to-emerald-800 text-white py-4 rounded-2xl font-bold transition-all duration-300 flex items-center justify-center space-x-3 shadow-xl hover:shadow-2xl hover:scale-105"
+              >
+                <BarChart3 className="w-6 h-6" />
+                <span>Reportes Financieros</span>
               </button>
             </div>
           </div>

@@ -33,7 +33,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   onPayOrder,
   onOpenCash,
   onGoToMenuManager,
- onGoToReports,
+  onGoToReports,
   onGoToClosureHistory,
   onShowSettings
 }) => {
@@ -113,14 +113,21 @@ const Dashboard: React.FC<DashboardProps> = ({
       </div>
 
       <div className="max-w-7xl mx-auto p-4 tablet:p-6">
-        {/* Stats Cards Premium */}
+        {/* Stats Cards Premium - SEPARACIÓN DE CONCEPTOS */}
         <div className="grid grid-cols-2 tablet:grid-cols-4 gap-4 tablet:gap-6 mb-6 tablet:mb-8">
+          
+          {/* 💰 DINERO FÍSICO TOTAL (inicial + efectivo de ventas) */}
           <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-4 tablet:p-6 hover:shadow-2xl transition-all duration-300 hover:scale-105">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs tablet:text-sm font-semibold text-slate-500 uppercase tracking-wide">Efectivo CRC</p>
+                <p className="text-xs tablet:text-sm font-semibold text-slate-500 uppercase tracking-wide">
+                  Efectivo Total CRC
+                </p>
                 <p className="text-xl tablet:text-3xl font-bold text-slate-800 mt-1">
                   {formatCurrency(cashRegister?.currentCashCRC || 0)}
+                </p>
+                <p className="text-xs text-slate-400">
+                  Base: {formatCurrency(cashRegister?.openingCashCRC || 0)}
                 </p>
               </div>
               <div className="p-2 tablet:p-3 bg-gradient-to-br from-emerald-500 to-green-600 rounded-xl">
@@ -129,25 +136,39 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
 
+          {/* 📊 VENTAS DEL DÍA (separadas del dinero físico) */}
           <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-4 tablet:p-6 hover:shadow-2xl transition-all duration-300 hover:scale-105">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs tablet:text-sm font-semibold text-slate-500 uppercase tracking-wide">Efectivo USD</p>
-                <p className="text-xl tablet:text-3xl font-bold text-slate-800 mt-1">
-                  ${(cashRegister?.currentCashUSD || 0).toFixed(2)}
+                <p className="text-xs tablet:text-sm font-semibold text-slate-500 uppercase tracking-wide">
+                  Ventas Hoy CRC
                 </p>
+                <p className="text-xl tablet:text-3xl font-bold text-blue-600 mt-1">
+                  {formatCurrency(cashRegister?.totalSalesCRC || 0)}
+                </p>
+                <p className="text-xs text-blue-400">Solo ingresos por ventas</p>
               </div>
               <div className="p-2 tablet:p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl">
-                <DollarSign className="w-6 tablet:w-8 h-6 tablet:h-8 text-white" />
+                <TrendingUp className="w-6 tablet:w-8 h-6 tablet:h-8 text-white" />
               </div>
             </div>
           </div>
 
+          {/* 🍽️ ÓRDENES PROCESADAS HOY */}
           <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-4 tablet:p-6 hover:shadow-2xl transition-all duration-300 hover:scale-105">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs tablet:text-sm font-semibold text-slate-500 uppercase tracking-wide">Órdenes Hoy</p>
-                <p className="text-xl tablet:text-3xl font-bold text-slate-800 mt-1">{paidOrders.length}</p>
+                <p className="text-xs tablet:text-sm font-semibold text-slate-500 uppercase tracking-wide">
+                  Órdenes Procesadas
+                </p>
+                <p className="text-xl tablet:text-3xl font-bold text-purple-600 mt-1">
+                  {cashRegister?.totalOrders || 0}
+                </p>
+                <p className="text-xs text-purple-400">
+                  Promedio: {cashRegister?.totalOrders > 0 
+                    ? formatCurrency((cashRegister?.totalSalesCRC || 0) / cashRegister.totalOrders)
+                    : '₡0'}
+                </p>
               </div>
               <div className="p-2 tablet:p-3 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl">
                 <FileText className="w-6 tablet:w-8 h-6 tablet:h-8 text-white" />
@@ -155,22 +176,32 @@ const Dashboard: React.FC<DashboardProps> = ({
             </div>
           </div>
 
+          {/* 🍽️ ESTADO OPERATIVO */}
           <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-4 tablet:p-6 hover:shadow-2xl transition-all duration-300 hover:scale-105">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs tablet:text-sm font-semibold text-slate-500 uppercase tracking-wide">Mesas Ocupadas</p>
-                <p className="text-xl tablet:text-3xl font-bold text-slate-800 mt-1">
-                  {occupiedTables.length}/{tables.length}
+                <p className="text-xs tablet:text-sm font-semibold text-slate-500 uppercase tracking-wide">
+                  Estado
+                </p>
+                <p className={`text-xl tablet:text-2xl font-bold mt-1 ${
+                  cashRegister?.isOpen ? 'text-green-600' : 'text-red-600'
+                }`}>
+                  {cashRegister?.isOpen ? 'OPERANDO' : 'CERRADO'}
+                </p>
+                <p className="text-xs text-slate-400">
+                  {occupiedTables.length}/{tables.length} mesas ocupadas
                 </p>
               </div>
-              <div className="p-2 tablet:p-3 bg-gradient-to-br from-orange-500 to-red-600 rounded-xl">
+              <div className={`p-2 tablet:p-3 rounded-xl ${
+                cashRegister?.isOpen 
+                  ? 'bg-gradient-to-br from-green-500 to-emerald-600' 
+                  : 'bg-gradient-to-br from-red-500 to-rose-600'
+              }`}>
                 <Users className="w-6 tablet:w-8 h-6 tablet:h-8 text-white" />
               </div>
             </div>
           </div>
         </div>
-
-        {/* Action Buttons Premium */}
 
         {/* Tables Grid Premium */}
         <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-6 tablet:p-8">

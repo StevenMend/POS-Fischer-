@@ -1,195 +1,264 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Restaurant } from '../lib/classes/Restaurant';
-import { Table, Order, MenuItem, CashRegister, DailySummary, Currency, Payment } from '../types';
-import { saveToStorage, loadFromStorage, STORAGE_KEYS } from '../lib/storage';
-
-// Instancia singleton del restaurante
-let restaurantInstance: Restaurant | null = null;
-
-const getRestaurantInstance = (): Restaurant => {
-  if (!restaurantInstance) {
-    restaurantInstance = new Restaurant();
-  }
-  return restaurantInstance;
-};
+import { Table, Order, MenuItem, CashRegister, Payment, DailyRecord, Expense } from '../types';
 
 export const useRestaurant = () => {
-  const [restaurant] = useState(() => getRestaurantInstance());
-  const [tables, setTables] = useState<Table[]>([]);
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [cashRegister, setCashRegister] = useState<CashRegister | null>(null);
+  const [restaurant] = useState(() => new Restaurant());
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
-  const [forceUpdate, setForceUpdate] = useState(0);
+  const [, forceUpdate] = useState({});
 
-  // Refrescar datos
-  const refreshData = useCallback(() => {
-    setTables(restaurant.getTables());
-    setMenuItems(restaurant.getMenuItems());
-    setCashRegister(restaurant.getCashRegister());
-    setForceUpdate(prev => prev + 1);
-    setLoading(false);
-  }, [restaurant]);
+  // Force re-render helper
+  const triggerUpdate = useCallback(() => {
+    forceUpdate({});
+  }, []);
 
-  // Inicializar datos
-  useEffect(() => {
-    // Pequeño delay para asegurar que todo se carga
-    setTimeout(() => {
-      refreshData();
+  // 🔥 CARGAR EXPENSES DESDE LOCALSTORAGE
+  const loadExpenses = useCallback(() => {
+    try {
+      const savedExpenses = localStorage.getItem('fischer_expenses');
+      if (savedExpenses) {
+        setExpenses(JSON.parse(savedExpenses));
+      }
+    } catch (error) {
+      console.error('Error loading expenses:', error);
+      setExpenses([]);
     }
-    )
-    refreshData();
-  }, [refreshData]);
+  }, []);
 
-  // GESTIÓN DE CAJA
-  const openCashRegister = useCallback((openingCashCRC: number, openingCashUSD: number) => {
-    restaurant.openCashRegister(openingCashCRC, openingCashUSD);
-    refreshData();
-  }, [restaurant, refreshData]);
+  // 🔥 GUARDAR EXPENSES EN LOCALSTORAGE
+  const saveExpenses = useCallback((newExpenses: Expense[]) => {
+    try {
+      localStorage.setItem('fischer_expenses', JSON.stringify(newExpenses));
+      setExpenses(newExpenses);
+    } catch (error) {
+      console.error('Error saving expenses:', error);
+    }
+  }, []);
 
-  const closeCashRegister = useCallback((): DailySummary => {
-    const summary = restaurant.closeCashRegister();
-    refreshData();
-    return summary;
-  }, [restaurant, refreshData]);
+  useEffect(() => {
+    console.log('🎣 useRestaurant hook inicializado');
+    
+    // Cargar expenses al inicializar
+    loadExpenses();
+    
+    // Simular carga inicial
+    const timer = setTimeout(() => {
+      setLoading(false);
+      console.log('✅ useRestaurant hook listo');
+    }, 500);
 
-  // GESTIÓN DE ÓRDENES
+    return () => clearTimeout(timer);
+  }, [loadExpenses]);
+
+  // Métodos de Caja
+  const openCashRegister = useCallback((crcAmount: number, usdAmount: number) => {
+    console.log('🎣 Hook: Abriendo caja registradora');
+    restaurant.openCashRegister(crcAmount, usdAmount);
+    triggerUpdate();
+  }, [restaurant, triggerUpdate]);
+
+  const closeCashRegister = useCallback((): DailyRecord => {
+    console.log('🎣 Hook: Cerrando caja registradora');
+    const record = restaurant.closeCashRegister();
+    triggerUpdate();
+    return record;
+  }, [restaurant, triggerUpdate]);
+
+  // Métodos de Órdenes
   const createOrder = useCallback((tableNumber: number, notes?: string): Order => {
+    console.log('🎣 Hook: Creando orden para mesa', tableNumber);
     const order = restaurant.createOrder(tableNumber, notes);
-    refreshData();
+    triggerUpdate();
     return order;
-  }, [restaurant, refreshData]);
-
-  const getOrder = useCallback((orderId: string): Order | undefined => {
-    return restaurant.getOrder(orderId);
-  }, [restaurant]);
+  }, [restaurant, triggerUpdate]);
 
   const updateOrder = useCallback((order: Order) => {
+    console.log('🎣 Hook: Actualizando orden', order.id);
     restaurant.updateOrder(order);
-    refreshData();
-  }, [restaurant, refreshData]);
+    triggerUpdate();
+  }, [restaurant, triggerUpdate]);
 
-  const deleteOrder = useCallback((orderId: string) => {
-    restaurant.deleteOrder(orderId);
-    refreshData();
-  }, [restaurant, refreshData]);
-
-  // GESTIÓN DE MENÚ
-  const addMenuItem = useCallback((item: Omit<MenuItem, 'id'>): MenuItem => {
-    const newItem = restaurant.addMenuItem(item);
-    refreshData();
-    return newItem;
-  }, [restaurant, refreshData]);
-
-  const updateMenuItem = useCallback((menuItem: MenuItem) => {
-    restaurant.updateMenuItem(menuItem);
-    refreshData();
-  }, [restaurant, refreshData]);
-
-  const deleteMenuItem = useCallback((itemId: string) => {
-    restaurant.deleteMenuItem(itemId);
-    refreshData();
-  }, [restaurant, refreshData]);
-
-  const getMenuItemsByCategory = useCallback((category: string): MenuItem[] => {
-    return restaurant.getMenuItemsByCategory(category);
-  }, [restaurant]);
-
-  // GESTIÓN DE PAGOS
   const processPayment = useCallback((
     orderId: string, 
     amount: number, 
-    currency: Currency, 
+    currency: 'CRC' | 'USD', 
     method: 'cash' | 'card', 
     received?: number
   ): Payment => {
+    console.log('🎣 Hook: Procesando pago');
     const payment = restaurant.processPayment(orderId, amount, currency, method, received);
-    refreshData();
+    triggerUpdate();
     return payment;
-  }, [restaurant, refreshData]);
+  }, [restaurant, triggerUpdate]);
 
-  // GETTERS
-  const getTable = useCallback((tableId: string): Table | undefined => {
-    return restaurant.getTable(tableId);
-  }, [restaurant]);
-
-  const getTableByNumber = useCallback((number: number): Table | undefined => {
-    return restaurant.getTableByNumber(number);
-  }, [restaurant]);
-
-  const getAvailableTables = useCallback((): Table[] => {
-    return restaurant.getAvailableTables();
-  }, [restaurant]);
-
-  const getOccupiedTables = useCallback((): Table[] => {
-    return restaurant.getOccupiedTables();
+  const getOrder = useCallback((orderId: string): Order | undefined => {
+    return restaurant.getOrder(orderId);
   }, [restaurant]);
 
   const getTodaysOrders = useCallback((): Order[] => {
     return restaurant.getTodaysOrders();
   }, [restaurant]);
 
-  const getCategories = useCallback((): string[] => {
-    return restaurant.getCategories();
+  const getTableByNumber = useCallback((number: number): Table | undefined => {
+    return restaurant.getTableByNumber(number);
   }, [restaurant]);
 
-  // UTILIDADES ADICIONALES
-  const getTableStats = useCallback(() => {
-    const allTables = restaurant.getTables();
-    return {
-      total: allTables.length,
-      available: allTables.filter(t => t.status === 'available').length,
-      occupied: allTables.filter(t => t.status === 'occupied').length,
-      reserved: allTables.filter(t => t.status === 'reserved').length,
-      cleaning: allTables.filter(t => t.status === 'cleaning').length
-    };
-  }, [restaurant]);
+  // Métodos de Menú
+  const addMenuItem = useCallback((item: Omit<MenuItem, 'id'>): MenuItem => {
+    console.log('🎣 Hook: Agregando item al menú');
+    const menuItem = restaurant.addMenuItem(item);
+    triggerUpdate();
+    return menuItem;
+  }, [restaurant, triggerUpdate]);
 
-  const getDailySales = useCallback(() => {
-    const cashReg = restaurant.getCashRegister();
-    return {
-      totalCRC: cashReg.totalSalesCRC,
-      totalUSD: cashReg.totalSalesUSD,
-      totalOrders: cashReg.totalOrders,
-      currentCashCRC: cashReg.currentCashCRC,
-      currentCashUSD: cashReg.currentCashUSD
+  const updateMenuItem = useCallback((item: MenuItem) => {
+    console.log('🎣 Hook: Actualizando item del menú');
+    restaurant.updateMenuItem(item);
+    triggerUpdate();
+  }, [restaurant, triggerUpdate]);
+
+  const deleteMenuItem = useCallback((itemId: string) => {
+    console.log('🎣 Hook: Eliminando item del menú');
+    restaurant.deleteMenuItem(itemId);
+    triggerUpdate();
+  }, [restaurant, triggerUpdate]);
+
+  // 🔥 MÉTODOS DE GASTOS - LOCALSTORAGE DIRECTO (SIN USAR RESTAURANT)
+  const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+  const addExpense = useCallback((expense: Omit<Expense, 'id' | 'createdAt'>): Expense => {
+    console.log('🎣 Hook: Agregando gasto');
+    const newExpense: Expense = {
+      ...expense,
+      id: generateId(),
+      createdAt: new Date().toISOString()
     };
-  }, [restaurant]);
+    
+    const updatedExpenses = [...expenses, newExpense];
+    saveExpenses(updatedExpenses);
+    return newExpense;
+  }, [expenses, saveExpenses]);
+
+  const updateExpense = useCallback((updatedExpense: Expense) => {
+    console.log('🎣 Hook: Actualizando gasto');
+    const updatedExpenses = expenses.map(exp => 
+      exp.id === updatedExpense.id ? { ...updatedExpense, updatedAt: new Date().toISOString() } : exp
+    );
+    saveExpenses(updatedExpenses);
+  }, [expenses, saveExpenses]);
+
+  const deleteExpense = useCallback((expenseId: string) => {
+    console.log('🎣 Hook: Eliminando gasto');
+    const updatedExpenses = expenses.filter(exp => exp.id !== expenseId);
+    saveExpenses(updatedExpenses);
+  }, [expenses, saveExpenses]);
+
+  const getExpensesByCategory = useCallback((expensesToUse?: Expense[]): Record<string, number> => {
+    const expenseList = expensesToUse || expenses;
+    return expenseList.reduce((acc, expense) => {
+      const amountInCRC = expense.currency === 'USD' ? expense.amount * 520 : expense.amount;
+      acc[expense.category] = (acc[expense.category] || 0) + amountInCRC;
+      return acc;
+    }, {} as Record<string, number>);
+  }, [expenses]);
+
+  const getExpensesByType = useCallback((expensesToUse?: Expense[]): { gastos: number; inversiones: number } => {
+    const expenseList = expensesToUse || expenses;
+    return expenseList.reduce((acc, expense) => {
+      const amountInCRC = expense.currency === 'USD' ? expense.amount * 520 : expense.amount;
+      if (expense.type === 'gasto') {
+        acc.gastos += amountInCRC;
+      } else {
+        acc.inversiones += amountInCRC;
+      }
+      return acc;
+    }, { gastos: 0, inversiones: 0 });
+  }, [expenses]);
+
+  const getTodaysExpenses = useCallback((): Expense[] => {
+    const today = new Date().toISOString().split('T')[0];
+    return expenses.filter(expense => expense.date === today);
+  }, [expenses]);
+
+  const getExpensesInPeriod = useCallback((startDate: string, endDate: string): Expense[] => {
+    return expenses.filter(expense => 
+      expense.date >= startDate && expense.date <= endDate
+    );
+  }, [expenses]);
+
+  // 🔥 ESTADÍSTICAS FINANCIERAS - IMPLEMENTACIÓN BÁSICA
+  const getDailySummary = useCallback(() => {
+    const todayOrders = restaurant.getTodaysOrders().filter(order => order.status === 'paid');
+    const todayExpenses = getTodaysExpenses();
+    
+    const totalSales = todayOrders.reduce((sum, order) => sum + order.total, 0);
+    const totalExpenses = todayExpenses.reduce((sum, expense) => 
+      sum + (expense.currency === 'USD' ? expense.amount * 520 : expense.amount), 0
+    );
+    
+    return {
+      date: new Date().toISOString().split('T')[0],
+      totalSales,
+      totalOrders: todayOrders.length,
+      averageOrderValue: todayOrders.length > 0 ? totalSales / todayOrders.length : 0,
+      totalExpenses,
+      netProfit: totalSales - totalExpenses,
+      profitMargin: totalSales > 0 ? ((totalSales - totalExpenses) / totalSales) * 100 : 0,
+      expensesByCategory: getExpensesByCategory(todayExpenses),
+      expensesByType: getExpensesByType(todayExpenses)
+    };
+  }, [restaurant, getTodaysExpenses, getExpensesByCategory, getExpensesByType]);
+
+  const getFinancialStats = useCallback((period: 'today' | 'week' | 'month') => {
+    // Implementación básica
+    return getDailySummary();
+  }, [getDailySummary]);
+
+  // Utilidades
+  const refreshData = useCallback(() => {
+    console.log('🎣 Hook: Refrescando datos');
+    loadExpenses();
+    triggerUpdate();
+  }, [triggerUpdate, loadExpenses]);
+
   return {
     // Estado
-    tables,
-    menuItems,
-    cashRegister,
+    tables: restaurant.getTables(),
+    menuItems: restaurant.getMenuItems(),
+    cashRegister: restaurant.getCashRegister(),
+    expenses, // 🔥 Desde localStorage
     loading,
-    forceUpdate,
     
-    // Acciones de caja
+    // Métodos de Caja
     openCashRegister,
     closeCashRegister,
     
-    // Acciones de órdenes
+    // Métodos de Órdenes
     createOrder,
-    getOrder,
     updateOrder,
-    deleteOrder,
+    processPayment,
+    getOrder,
+    getTodaysOrders,
+    getTableByNumber,
     
-    // Acciones de menú
+    // Métodos de Menú
     addMenuItem,
     updateMenuItem,
     deleteMenuItem,
-    getMenuItemsByCategory,
     
-    // Acciones de pagos
-    processPayment,
+    // 🔥 Métodos de Gastos (localStorage directo)
+    addExpense,
+    updateExpense,
+    deleteExpense,
+    getExpensesByCategory,
+    getExpensesByType,
+    getTodaysExpenses,
+    getExpensesInPeriod,
     
-    // Getters
-    getTable,
-    getTableByNumber,
-    getAvailableTables,
-    getOccupiedTables,
-    getTodaysOrders,
-    getCategories,
-    getTableStats,
-    getDailySales,
+    // 🔥 Estadísticas Financieras
+    getDailySummary,
+    getFinancialStats,
     
     // Utilidades
     refreshData
