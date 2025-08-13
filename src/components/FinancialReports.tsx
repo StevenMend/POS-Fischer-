@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   ArrowLeft, 
   TrendingUp, 
@@ -11,10 +11,12 @@ import {
   AlertTriangle
 } from 'lucide-react';
 
+// 🔥 PROPS UNIFICADAS - Sin localStorage directo
 interface FinancialReportsProps {
   onBack: () => void;
-  cashRegister: any;
-  todaysOrders: any[];
+  expenses: Expense[];
+  getFinancialStats: (period: 'week' | 'month' | 'today') => FinancialStats;
+  getClosureHistory: () => DailyRecord[];
 }
 
 interface Expense {
@@ -25,7 +27,7 @@ interface Expense {
   category: string;
   date: string;
   type: 'gasto' | 'inversion';
-  createdAt: string;
+  createdAt?: string;
 }
 
 interface DailyRecord {
@@ -43,26 +45,23 @@ interface DailyRecord {
   closedAt: string;
 }
 
+interface FinancialStats {
+  totalIncome: { CRC: number; USD: number };
+  totalExpenses: { CRC: number; USD: number };
+  netProfit: { CRC: number; USD: number };
+  alerts: string[];
+  expensesByCategory: Record<string, number>;
+  averageOrderValue: number;
+  totalOrders: number;
+}
+
 const FinancialReports: React.FC<FinancialReportsProps> = ({
   onBack,
-  cashRegister,
-  todaysOrders
+  expenses,
+  getFinancialStats,
+  getClosureHistory
 }) => {
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [closures, setClosures] = useState<DailyRecord[]>([]);
   const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month'>('week');
-
-  useEffect(() => {
-    const savedExpenses = localStorage.getItem('fischer_expenses');
-    if (savedExpenses) {
-      setExpenses(JSON.parse(savedExpenses));
-    }
-
-    const savedClosures = localStorage.getItem('fischer_closure_history');
-    if (savedClosures) {
-      setClosures(JSON.parse(savedClosures));
-    }
-  }, []);
 
   const formatCurrency = (amount: number) => {
     return `₡${Math.round(amount).toLocaleString('es-CR')}`;
@@ -72,7 +71,12 @@ const FinancialReports: React.FC<FinancialReportsProps> = ({
     return currency === 'USD' ? amount * 520 : amount;
   };
 
-  const getFinancialData = () => {
+  // 🔥 USAR DATOS DEL HOOK UNIFICADO
+  const financialStats = getFinancialStats(selectedPeriod);
+  const closures = getClosureHistory();
+
+  // 🔥 CALCULAR DATOS ADICIONALES USANDO ESTADÍSTICAS UNIFICADAS
+  const getExtendedFinancialData = () => {
     const today = new Date();
     let startDate: Date;
     
@@ -89,20 +93,8 @@ const FinancialReports: React.FC<FinancialReportsProps> = ({
       closure.date >= startDateStr && closure.date <= endDateStr
     );
 
-    const totalIncome = periodClosures.reduce((sum, closure) => 
-      sum + closure.totalSalesCRC + convertToColones(closure.totalSalesUSD, 'USD'), 0
-    );
-
-    const totalOrders = periodClosures.reduce((sum, closure) => 
-      sum + closure.totalOrders, 0
-    );
-
     const periodExpenses = expenses.filter(expense => 
       expense.date >= startDateStr && expense.date <= endDateStr
-    );
-
-    const totalExpenses = periodExpenses.reduce((sum, expense) => 
-      sum + convertToColones(expense.amount, expense.currency), 0
     );
 
     const gastos = periodExpenses.filter(exp => exp.type === 'gasto');
@@ -116,38 +108,31 @@ const FinancialReports: React.FC<FinancialReportsProps> = ({
       sum + convertToColones(expense.amount, expense.currency), 0
     );
 
-    const netProfit = totalIncome - totalExpenses;
-    const profitMargin = totalIncome > 0 ? (netProfit / totalIncome) * 100 : 0;
-
     const daysCount = selectedPeriod === 'week' ? 7 : new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
     const operatedDays = periodClosures.length;
     
+    const totalIncome = financialStats.totalIncome.CRC + convertToColones(financialStats.totalIncome.USD, 'USD');
+    const totalExpenses = financialStats.totalExpenses.CRC + convertToColones(financialStats.totalExpenses.USD, 'USD');
+    const netProfit = financialStats.netProfit.CRC + convertToColones(financialStats.netProfit.USD, 'USD');
+    
+    const profitMargin = totalIncome > 0 ? (netProfit / totalIncome) * 100 : 0;
     const dailyAverageIncome = operatedDays > 0 ? totalIncome / operatedDays : 0;
     const dailyAverageExpenses = daysCount > 0 ? totalExpenses / daysCount : 0;
 
-    const expensesByCategory = periodExpenses.reduce((acc, expense) => {
-      const amount = convertToColones(expense.amount, expense.currency);
-      acc[expense.category] = (acc[expense.category] || 0) + amount;
-      return acc;
-    }, {} as Record<string, number>);
-
+    // 🔥 ALERTAS MEJORADAS USANDO DATOS DEL RESTAURANT
     const alerts = [];
     const expenseRatio = totalIncome > 0 ? totalExpenses / totalIncome : 0;
     
-    if (expenseRatio > 0.7) {
+    // Usar alertas del sistema unificado
+    financialStats.alerts.forEach(alert => {
       alerts.push({
-        type: 'warning' as const,
-        message: `Gastos representan ${(expenseRatio * 100).toFixed(1)}% de las ventas ${selectedPeriod === 'week' ? 'semanales' : 'mensuales'}. Revisar costos.`
+        type: alert.includes('CRÍTICO') ? 'critical' as const : 
+              alert.includes('muy alto') ? 'warning' as const : 'info' as const,
+        message: alert
       });
-    }
+    });
     
-    if (expenseRatio > 0.9) {
-      alerts.push({
-        type: 'critical' as const,
-        message: `⚠️ CRÍTICO: Gastos casi igualan las ventas. Revisar urgentemente.`
-      });
-    }
-    
+    // Alertas adicionales específicas para reportes
     if (totalIncome === 0 && operatedDays === 0) {
       alerts.push({
         type: 'info' as const,
@@ -162,10 +147,10 @@ const FinancialReports: React.FC<FinancialReportsProps> = ({
       totalInversiones,
       netProfit,
       profitMargin,
-      ordersCount: totalOrders,
+      ordersCount: financialStats.totalOrders,
       expensesCount: periodExpenses.length,
-      expensesByCategory,
-      averageOrderValue: totalOrders > 0 ? totalIncome / totalOrders : 0,
+      expensesByCategory: financialStats.expensesByCategory,
+      averageOrderValue: financialStats.averageOrderValue,
       operatedDays,
       dailyAverageIncome,
       dailyAverageExpenses,
@@ -173,7 +158,7 @@ const FinancialReports: React.FC<FinancialReportsProps> = ({
     };
   };
 
-  const data = getFinancialData();
+  const data = getExtendedFinancialData();
 
   const getPeriodLabel = () => {
     switch (selectedPeriod) {

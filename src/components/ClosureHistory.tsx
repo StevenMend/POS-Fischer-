@@ -14,6 +14,8 @@ import {
 
 interface ClosureHistoryProps {
   onBack: () => void;
+  closureHistory?: any[];
+  getClosureHistory?: () => any[];
 }
 
 interface DailyRecord {
@@ -35,7 +37,11 @@ interface DailyRecord {
   closedAt: string;
 }
 
-const ClosureHistory: React.FC<ClosureHistoryProps> = ({ onBack }) => {
+const ClosureHistory: React.FC<ClosureHistoryProps> = ({ 
+  onBack,
+  closureHistory,
+  getClosureHistory 
+}) => {
   const [records, setRecords] = useState<DailyRecord[]>([]);
   const [filteredRecords, setFilteredRecords] = useState<DailyRecord[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<DailyRecord | null>(null);
@@ -43,15 +49,29 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({ onBack }) => {
   const [sortBy, setSortBy] = useState<'date' | 'sales' | 'orders'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
-  // Cargar historial desde localStorage
+  // Cargar historial
   useEffect(() => {
-    const savedHistory = localStorage.getItem('fischer_closure_history');
-    if (savedHistory) {
-      const history = JSON.parse(savedHistory);
-      setRecords(history);
-      setFilteredRecords(history);
+    let history: any[] = [];
+    
+    // Prioridad 1: Usar datos del hook si están disponibles
+    if (closureHistory && closureHistory.length > 0) {
+      history = closureHistory;
     }
-  }, []);
+    // Prioridad 2: Usar función del hook si está disponible
+    else if (getClosureHistory) {
+      history = getClosureHistory();
+    }
+    // Fallback: Leer directamente de localStorage
+    else {
+      const savedHistory = localStorage.getItem('fischer_closure_history');
+      if (savedHistory) {
+        history = JSON.parse(savedHistory);
+      }
+    }
+    
+    setRecords(history);
+    setFilteredRecords(history);
+  }, [closureHistory, getClosureHistory]);
 
   // Filtrar registros
   useEffect(() => {
@@ -93,7 +113,11 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({ onBack }) => {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('es-CR', {
+    // Parsear correctamente YYYY-MM-DD
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day); // month - 1 porque Date usa 0-11
+    
+    return date.toLocaleDateString('es-CR', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
@@ -112,7 +136,7 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({ onBack }) => {
 
   const getStats = () => {
     if (filteredRecords.length === 0) return null;
-
+    
     const totalSales = filteredRecords.reduce((sum, record) => 
       sum + record.totalSalesCRC + (record.totalSalesUSD * 520), 0
     );
@@ -149,6 +173,13 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({ onBack }) => {
                 <p className="text-slate-500 font-medium">
                   Análisis de tendencias y comparación de días
                 </p>
+                {records.length > 0 && (
+                  <div className="mt-2">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      {records.length} {records.length === 1 ? 'registro' : 'registros'}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
             
@@ -172,6 +203,7 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({ onBack }) => {
                 value={dateFilter}
                 onChange={(e) => setDateFilter(e.target.value)}
                 className="px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/80"
+                placeholder="Filtrar por fecha"
               />
             </div>
 

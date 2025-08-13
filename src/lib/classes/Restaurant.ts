@@ -1,8 +1,8 @@
 import { Table } from './Table';
 import { Order } from './Order';
 import { MenuItem } from './MenuItem';
-import { CashRegister, Payment, DailyRecord, Currency, MenuItem as IMenuItem } from '../../types';
-import { generateId, formatCurrency, convertCurrency } from '../utils';
+import { CashRegister, Payment, DailyRecord, Currency, MenuItem as IMenuItem, Expense } from '../../types';
+import { generateId, formatCurrency, convertCurrency, getClosureDateString, parseDateString, getPeriodDates } from '../utils';
 import { saveToStorage, loadFromStorage, STORAGE_KEYS } from '../storage';
 import { SAMPLE_MENU_ITEMS } from '../constants';
 
@@ -12,6 +12,7 @@ export class Restaurant {
   private menuItems: Map<string, MenuItem> = new Map();
   private cashRegister: CashRegister;
   private payments: Payment[] = [];
+  private expenses: Map<string, Expense> = new Map();
 
   constructor() {
     console.log('🏗️ Construyendo Restaurant...');
@@ -58,45 +59,76 @@ export class Restaurant {
     }
   }
 
-  // GESTIÓN DE CAJA - SEPARACIÓN DE CONCEPTOS IMPLEMENTADA
-  openCashRegister(openingCashCRC: number, openingCashUSD: number): void {
-    console.log('🏦 Abriendo caja registradora...', { openingCashCRC, openingCashUSD });
-    
-    this.cashRegister = {
-      // 🏦 ESTADO OPERATIVO
-      isOpen: true,
-      
-      // 💰 DINERO FÍSICO BASE (para vueltos)
-      openingCashCRC,
-      openingCashUSD,
-      currentCashCRC: openingCashCRC,     // Empieza igual al inicial
-      currentCashUSD: openingCashUSD,     // Empieza igual al inicial
-      
-      // 📊 VENTAS DEL DÍA (empiezan en 0)
-      totalSalesCRC: 0,                   // Solo ingresos por ventas
-      totalSalesUSD: 0,                   // Solo ingresos por ventas
-      totalOrders: 0,                     // Órdenes procesadas
-      
-      // 💳 DESGLOSE DE PAGOS (empiezan en 0)
-      cashPaymentsCRC: 0,                 // Efectivo recibido en ventas
-      cashPaymentsUSD: 0,                 // Efectivo recibido en ventas
-      cardPaymentsCRC: 0,                 // Tarjetas procesadas
-      cardPaymentsUSD: 0,                 // Tarjetas procesadas
-      
-      // 📅 TIMESTAMP
-      openedAt: new Date()
-    };
-    
-    this.saveToStorage();
-  }
+  // 🔥 CORRECCIÓN DEL MÉTODO openCashRegister - RESET COMPLETO
+openCashRegister(openingCashCRC: number, openingCashUSD: number): void {
+  console.log('🏦 Abriendo caja registradora con RESET COMPLETO...', { openingCashCRC, openingCashUSD });
+  
+  // 🧹 PRIMERO: RESET COMPLETO DE DATOS DEL DÍA ANTERIOR
+  console.log('🧹 Limpiando datos del día anterior...');
+  
+  // 🗑️ LIMPIAR ÓRDENES DEL DÍA ANTERIOR
+  this.orders.clear();
+  console.log('✅ Órdenes del día anterior eliminadas');
+  
+  // 🗑️ LIMPIAR PAGOS DEL DÍA ANTERIOR  
+  this.payments = [];
+  console.log('✅ Pagos del día anterior eliminados');
+  
+  // 🗑️ LIMPIAR EXPENSES DEL DÍA ANTERIOR  
+  this.expenses.clear();
+  console.log('✅ Expenses del día anterior eliminados');
+  
+  // 🍽️ LIBERAR TODAS LAS MESAS (estado limpio)
+  this.tables.forEach(table => {
+    if (table.status !== 'available') {
+      table.free();
+    }
+  });
+  console.log('✅ Todas las mesas liberadas');
 
-  closeCashRegister(): DailyRecord {
+  // 🔥 SEGUNDO: INICIALIZAR CAJA NUEVA CON DATOS EN CERO
+  this.cashRegister = {
+    // 🏦 ESTADO OPERATIVO
+    isOpen: true,
+    
+    // 💰 DINERO FÍSICO BASE (para vueltos) - INICIAL
+    openingCashCRC,
+    openingCashUSD,
+    currentCashCRC: openingCashCRC,     // Empieza igual al inicial
+    currentCashUSD: openingCashUSD,     // Empieza igual al inicial
+    
+    // 📊 VENTAS DEL DÍA - RESET COMPLETO A CERO
+    totalSalesCRC: 0,                   // 🔥 NUEVO DÍA = 0
+    totalSalesUSD: 0,                   // 🔥 NUEVO DÍA = 0
+    totalOrders: 0,                     // 🔥 NUEVO DÍA = 0
+    
+    // 💳 DESGLOSE DE PAGOS - RESET COMPLETO A CERO
+    cashPaymentsCRC: 0,                 // 🔥 NUEVO DÍA = 0
+    cashPaymentsUSD: 0,                 // 🔥 NUEVO DÍA = 0
+    cardPaymentsCRC: 0,                 // 🔥 NUEVO DÍA = 0
+    cardPaymentsUSD: 0,                 // 🔥 NUEVO DÍA = 0
+    
+    // 📅 TIMESTAMP NUEVO
+    openedAt: new Date()
+  };
+  
+  // 💾 GUARDAR ESTADO LIMPIO
+  this.saveToStorage();
+  
+  console.log('✅ Caja abierta con estado completamente limpio');
+  console.log('📊 Dashboard se mostrará con datos en cero');
+}
+
+  // 🔥 MÉTODO closeCashRegister CORREGIDO CON FECHAS EXACTAS
+closeCashRegister(): DailyRecord {
   console.log('🔒 Cerrando caja registradora...');
   
   // 📊 CAPTURAR DATOS ANTES DE RESETEAR
   const record: DailyRecord = {
     id: `closure-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    date: new Date().toISOString().split('T')[0],
+    
+    // 🔥 FECHA CORRECTA EN TIMEZONE COSTA RICA
+    date: getClosureDateString(), // YYYY-MM-DD en timezone correcto
     
     // 💰 DINERO FÍSICO (antes del reset)
     openingCashCRC: this.cashRegister.openingCashCRC,
@@ -118,7 +150,7 @@ export class Restaurant {
     cardPaymentsCRC: this.cashRegister.cardPaymentsCRC,
     cardPaymentsUSD: this.cashRegister.cardPaymentsUSD,
     
-    // 📅 TIMESTAMPS
+    // 📅 TIMESTAMPS EN ISO STRING
     openedAt: this.cashRegister.openedAt instanceof Date 
       ? this.cashRegister.openedAt.toISOString() 
       : (this.cashRegister.openedAt || new Date().toISOString()),
@@ -128,32 +160,32 @@ export class Restaurant {
   // 💾 GUARDAR EN HISTORIAL PRIMERO (con datos reales)
   this.saveToClosure(record);
 
-  // 🧹 AHORA SÍ RESETEAR PARA PRÓXIMO DÍA
-  console.log('🧹 Limpiando datos para el próximo día...');
+  // 🧹 AHORA SÍ RESETEAR COMPLETAMENTE PARA PRÓXIMO DÍA
+  console.log('🧹 Reseteando completamente el sistema...');
   
-  // 🔥 MANTENER CAJA CERRADA PERO CON DATOS DEL CIERRE VISIBLES
+  // 🔥 CAJA CERRADA Y DATOS RESETEADOS
   this.cashRegister = {
     // 🏦 ESTADO CERRADO
     isOpen: false,
     
-    // 💰 MANTENER DINERO FÍSICO HASTA PRÓXIMA APERTURA
-    openingCashCRC: this.cashRegister.openingCashCRC,
-    openingCashUSD: this.cashRegister.openingCashUSD,
-    currentCashCRC: this.cashRegister.currentCashCRC,    // 🔥 MANTENER para reporte
-    currentCashUSD: this.cashRegister.currentCashUSD,    // 🔥 MANTENER para reporte
+    // 💰 RESET COMPLETO DEL DINERO FÍSICO
+    openingCashCRC: 0,
+    openingCashUSD: 0,
+    currentCashCRC: 0,
+    currentCashUSD: 0,
     
-    // 📊 MANTENER DATOS DEL DÍA PARA EL REPORTE FINAL
-    totalSalesCRC: this.cashRegister.totalSalesCRC,      // 🔥 MANTENER para reporte
-    totalSalesUSD: this.cashRegister.totalSalesUSD,      // 🔥 MANTENER para reporte
-    totalOrders: this.cashRegister.totalOrders,          // 🔥 MANTENER para reporte
+    // 📊 RESET COMPLETO DE VENTAS
+    totalSalesCRC: 0,
+    totalSalesUSD: 0,
+    totalOrders: 0,
     
-    // 💳 MANTENER DESGLOSE PARA EL REPORTE FINAL
-    cashPaymentsCRC: this.cashRegister.cashPaymentsCRC,  // 🔥 MANTENER para reporte
-    cashPaymentsUSD: this.cashRegister.cashPaymentsUSD,  // 🔥 MANTENER para reporte
-    cardPaymentsCRC: this.cashRegister.cardPaymentsCRC,  // 🔥 MANTENER para reporte
-    cardPaymentsUSD: this.cashRegister.cardPaymentsUSD,  // 🔥 MANTENER para reporte
+    // 💳 RESET COMPLETO DE PAGOS
+    cashPaymentsCRC: 0,
+    cashPaymentsUSD: 0,
+    cardPaymentsCRC: 0,
+    cardPaymentsUSD: 0,
     
-    // 📅 TIMESTAMP
+    // 📅 TIMESTAMP DE CIERRE
     closedAt: new Date()
   };
 
@@ -164,6 +196,9 @@ export class Restaurant {
   console.log('🗑️ Limpiando pagos del día...');
   this.payments = [];
   
+  console.log('🗑️ Limpiando expenses del día...');
+  this.expenses.clear();
+  
   console.log('🍽️ Liberando todas las mesas...');
   this.tables.forEach(table => {
     if (table.status !== 'available') {
@@ -171,46 +206,14 @@ export class Restaurant {
     }
   });
 
-  // 💾 GUARDAR ESTADO CON DATOS DEL CIERRE
+  // 💾 GUARDAR ESTADO LIMPIO
   this.saveToStorage();
   
-  console.log('✅ Caja cerrada - Datos del día mantenidos para reporte final');
-  console.log('📊 Estado: Caja cerrada pero datos visibles hasta próxima apertura');
+  console.log('✅ Caja cerrada - Sistema completamente reseteado');
+  console.log('📊 Dashboard se mostrará como "Caja Cerrada"');
   
   return record;
 }
-
-// // 🔥 NUEVO MÉTODO: Reset completo al abrir nueva caja
-// openCashRegister(openingCashCRC: number, openingCashUSD: number): void {
-//   console.log('🏦 Abriendo caja registradora...', { openingCashCRC, openingCashUSD });
-  
-//   this.cashRegister = {
-//     // 🏦 ESTADO OPERATIVO
-//     isOpen: true,
-    
-//     // 💰 DINERO FÍSICO BASE (para vueltos)
-//     openingCashCRC,
-//     openingCashUSD,
-//     currentCashCRC: openingCashCRC,     // Empieza igual al inicial
-//     currentCashUSD: openingCashUSD,     // Empieza igual al inicial
-    
-//     // 📊 VENTAS DEL DÍA (RESET COMPLETO AL ABRIR)
-//     totalSalesCRC: 0,                   // 🔥 RESET: nuevo día
-//     totalSalesUSD: 0,                   // 🔥 RESET: nuevo día
-//     totalOrders: 0,                     // 🔥 RESET: nuevo día
-    
-//     // 💳 DESGLOSE DE PAGOS (RESET COMPLETO AL ABRIR)
-//     cashPaymentsCRC: 0,                 // 🔥 RESET: nuevo día
-//     cashPaymentsUSD: 0,                 // 🔥 RESET: nuevo día
-//     cardPaymentsCRC: 0,                 // 🔥 RESET: nuevo día
-//     cardPaymentsUSD: 0,                 // 🔥 RESET: nuevo día
-    
-//     // 📅 TIMESTAMP
-//     openedAt: new Date()
-//   };
-  
-//   this.saveToStorage();
-// }
 
   private getPaymentsByType(method: string, currency: Currency): number {
     return this.payments
@@ -327,6 +330,159 @@ export class Restaurant {
     this.saveToStorage();
   }
 
+  // ==========================================
+  // 🔥 GESTIÓN COMPLETA DE EXPENSES
+  // ==========================================
+
+  addExpense(expense: Omit<Expense, 'id' | 'date'>): Expense {
+    console.log('💸 Agregando expense:', expense.description, `₡${expense.amount}`);
+    
+    const newExpense: Expense = {
+      ...expense,
+      id: generateId(),
+      date: getClosureDateString(), // Siempre fecha actual en formato YYYY-MM-DD
+    };
+    
+    this.expenses.set(newExpense.id, newExpense);
+    this.saveToStorage();
+    return newExpense;
+  }
+
+  updateExpense(expense: Expense): void {
+    console.log('✏️ Actualizando expense:', expense.description);
+    
+    this.expenses.set(expense.id, expense);
+    this.saveToStorage();
+  }
+
+  deleteExpense(expenseId: string): void {
+    console.log('🗑️ Eliminando expense:', expenseId);
+    
+    this.expenses.delete(expenseId);
+    this.saveToStorage();
+  }
+
+  getExpenses(): Expense[] {
+    return Array.from(this.expenses.values()).sort((a, b) => 
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+  }
+
+  getExpensesByPeriod(startDate: string, endDate: string): Expense[] {
+    return this.getExpenses().filter(expense => {
+      return expense.date >= startDate && expense.date <= endDate;
+    });
+  }
+
+  getTodaysExpenses(): Expense[] {
+    const today = getClosureDateString();
+    return this.getExpenses().filter(expense => expense.date === today);
+  }
+
+  getExpensesByCategory(category: string): Expense[] {
+    return this.getExpenses().filter(expense => expense.category === category);
+  }
+
+  // 🔥 NUEVO: Obtener cierres por período (para estadísticas financieras)
+  getClosuresByPeriod(startDate: string, endDate: string): any[] {
+    try {
+      const history = JSON.parse(localStorage.getItem('fischer_closure_history') || '[]');
+      return history.filter((record: any) => {
+        return record.date >= startDate && record.date <= endDate;
+      });
+    } catch (error) {
+      console.error('Error loading closure history:', error);
+      return [];
+    }
+  }
+
+  // 🔥 NUEVO: Estadísticas financieras reales
+  getFinancialStats(period: 'week' | 'month' | 'today' = 'today'): {
+    totalIncome: { CRC: number; USD: number };
+    totalExpenses: { CRC: number; USD: number };
+    netProfit: { CRC: number; USD: number };
+    alerts: string[];
+    expensesByCategory: Record<string, number>;
+    averageOrderValue: number;
+    totalOrders: number;
+  } {
+    let startDate: string, endDate: string;
+    
+    if (period === 'today') {
+      startDate = endDate = getClosureDateString();
+    } else {
+      const dates = getPeriodDates(period);
+      startDate = dates.startDate;
+      endDate = dates.endDate;
+    }
+    
+    // 💰 INGRESOS: Suma de todos los cierres del período
+    const closures = this.getClosuresByPeriod(startDate, endDate);
+    const totalIncome = {
+      CRC: closures.reduce((sum, record) => sum + (record.totalSalesCRC || 0), 0),
+      USD: closures.reduce((sum, record) => sum + (record.totalSalesUSD || 0), 0)
+    };
+    
+    // 💸 GASTOS: Suma de expenses del período
+    const expenses = this.getExpensesByPeriod(startDate, endDate);
+    const totalExpenses = {
+      CRC: expenses.filter(e => e.currency === 'CRC').reduce((sum, e) => sum + e.amount, 0),
+      USD: expenses.filter(e => e.currency === 'USD').reduce((sum, e) => sum + e.amount, 0)
+    };
+    
+    // 💵 GANANCIA NETA
+    const netProfit = {
+      CRC: totalIncome.CRC - totalExpenses.CRC,
+      USD: totalIncome.USD - totalExpenses.USD
+    };
+    
+    // 📊 GASTOS POR CATEGORÍA
+    const expensesByCategory: Record<string, number> = {};
+    expenses.forEach(expense => {
+      if (!expensesByCategory[expense.category]) {
+        expensesByCategory[expense.category] = 0;
+      }
+      // Convertir todo a CRC para simplicidad
+      const amountInCRC = expense.currency === 'USD' 
+        ? expense.amount * 520 // usar tasa de cambio
+        : expense.amount;
+      expensesByCategory[expense.category] += amountInCRC;
+    });
+    
+    // 📈 MÉTRICAS ADICIONALES
+    const totalOrders = closures.reduce((sum, record) => sum + (record.totalOrders || 0), 0);
+    const averageOrderValue = totalOrders > 0 ? totalIncome.CRC / totalOrders : 0;
+    
+    // 🚨 ALERTAS
+    const alerts: string[] = [];
+    
+    // Alerta: Gastos muy altos vs ingresos
+    const expenseRatio = totalIncome.CRC > 0 ? (totalExpenses.CRC / totalIncome.CRC) * 100 : 0;
+    if (expenseRatio > 40) {
+      alerts.push(`Gastos representan ${expenseRatio.toFixed(1)}% de ingresos (muy alto)`);
+    }
+    
+    // Alerta: Pérdidas
+    if (netProfit.CRC < 0) {
+      alerts.push(`Pérdida neta de ₡${Math.abs(netProfit.CRC).toLocaleString()}`);
+    }
+    
+    // Alerta: Sin ventas en el período
+    if (totalIncome.CRC === 0 && period !== 'today') {
+      alerts.push('Sin ventas registradas en el período');
+    }
+    
+    return {
+      totalIncome,
+      totalExpenses,
+      netProfit,
+      alerts,
+      expensesByCategory,
+      averageOrderValue,
+      totalOrders
+    };
+  }
+
   // GESTIÓN DE PAGOS
   processPayment(orderId: string, amount: number, currency: Currency, method: 'cash' | 'card', received?: number): Payment {
     console.log('💳 Procesando pago:', { orderId, amount, currency, method });
@@ -410,6 +566,7 @@ export class Restaurant {
         menuItems: this.serializeMenuItems(),
         cashRegister: this.cashRegister,
         payments: this.payments,
+        expenses: this.serializeExpenses(),
         lastSaved: new Date().toISOString()
       };
       
@@ -441,6 +598,10 @@ export class Restaurant {
     );
   }
 
+  private serializeExpenses(): any[] {
+    return Array.from(this.expenses.values());
+  }
+
   private loadFromStorage(): void {
     console.log('📂 Intentando cargar datos desde localStorage...');
     
@@ -455,6 +616,7 @@ export class Restaurant {
       tables: data.tables?.length || 0,
       orders: data.orders?.length || 0,
       menuItems: data.menuItems?.length || 0,
+      expenses: data.expenses?.length || 0,
       cashRegisterOpen: data.cashRegister?.isOpen || false,
       lastSaved: data.lastSaved || 'No timestamp'
     });
@@ -464,6 +626,7 @@ export class Restaurant {
     this.loadMenuItems(data.menuItems);
     this.loadCashRegister(data.cashRegister);
     this.loadPayments(data.payments);
+    this.loadExpenses(data.expenses);
     
     this.verifyOrderReconnection();
   }
@@ -520,6 +683,15 @@ export class Restaurant {
     if (paymentsData) {
       this.payments = paymentsData;
       console.log(`✅ Cargados ${paymentsData.length} pagos`);
+    }
+  }
+
+  private loadExpenses(expensesData: any[]): void {
+    if (expensesData) {
+      expensesData.forEach((expenseData: any) => {
+        this.expenses.set(expenseData.id, expenseData);
+      });
+      console.log(`✅ Cargados ${expensesData.length} expenses`);
     }
   }
 

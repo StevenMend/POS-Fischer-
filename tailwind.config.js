@@ -7,8 +7,24 @@ export default {
   theme: {
     extend: {
       screens: {
-        'tablet': '1340px',
-        'tab-m9': { 'min': '1300px', 'max': '1400px' },
+        // 🔥 BREAKPOINTS ESTÁNDAR Y CORRECTOS
+        'xs': '475px',      // Extra small devices
+        'sm': '640px',      // Small devices (tablets en portrait)
+        'md': '768px',      // Medium devices (tablets en landscape) 
+        'lg': '1024px',     // Large devices (laptops)
+        'xl': '1280px',     // Extra large devices (desktops)
+        '2xl': '1536px',    // 2X large devices (large desktops)
+        
+        // 🎯 BREAKPOINTS PERSONALIZADOS PARA TU PROYECTO
+        'mobile': '320px',   // Móviles pequeños
+        'tablet': '768px',   // Tablets (no 1340px!)
+        'laptop': '1024px',  // Laptops
+        'desktop': '1280px', // Escritorios
+        
+        // 📱 BREAKPOINTS POR RANGO (si los necesitas)
+        'mobile-only': {'max': '767px'},          // Solo móviles
+        'tablet-only': {'min': '768px', 'max': '1023px'}, // Solo tablets
+        'desktop-up': {'min': '1280px'},          // Desktop y más grande
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],

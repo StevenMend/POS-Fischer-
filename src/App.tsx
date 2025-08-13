@@ -11,11 +11,9 @@ import ClosureHistory from './components/ClosureHistory';
 import ExpensesManager from './components/ExpensesManager';
 import FinancialReports from './components/FinancialReports';
 
-// 🔥 HOOK UNIFICADO - SINGLE SOURCE OF TRUTH
 import { useRestaurant } from './hooks/useRestaurant';
 
 const App: React.FC = () => {
-  // 🔥 HOOK COMPLETAMENTE INTEGRADO - INCLUYE EXPENSES
   const {
     tables,
     menuItems,
@@ -33,7 +31,6 @@ const App: React.FC = () => {
     addMenuItem,
     updateMenuItem,
     deleteMenuItem,
-    // 🔥 NUEVOS - MÉTODOS DE GASTOS
     addExpense,
     updateExpense,
     deleteExpense,
@@ -41,9 +38,9 @@ const App: React.FC = () => {
     getExpensesByType,
     getTodaysExpenses,
     getExpensesInPeriod,
-    // 🔥 NUEVOS - ESTADÍSTICAS FINANCIERAS
     getDailySummary,
     getFinancialStats,
+    getClosureHistory,
     refreshData
   } = useRestaurant();
 
@@ -73,7 +70,7 @@ const App: React.FC = () => {
         <div className="text-center">
           <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600 mx-auto mb-6"></div>
           <p className="text-slate-700 text-xl font-semibold">Cargando Restaurante Fischer...</p>
-          <p className="text-slate-500 text-sm mt-2">🔥 Ecosistema Unificado Completo</p>
+          <p className="text-slate-500 text-sm mt-2">Inicializando sistema</p>
         </div>
       </div>
     );
@@ -130,7 +127,20 @@ const App: React.FC = () => {
     console.log('🔒 Cerrando caja desde App');
     const record = closeCashRegister();
     console.log('✅ Caja cerrada exitosamente:', record.id);
-    alert('✅ Caja cerrada exitosamente. El registro se ha guardado en el Historial de Cierres.');
+    
+    setCurrentView('closure-history');
+    
+    alert('✅ Caja cerrada exitosamente. Datos guardados en el Historial de Cierres.');
+  };
+
+  const handleGoToReports = () => {
+    if (cashRegister?.isOpen) {
+      // Caja abierta → Mostrar reportes en tiempo real
+      setCurrentView('reports');
+    } else {
+      // Caja cerrada → Ir directamente al historial
+      setCurrentView('closure-history');
+    }
   };
 
   // POS handlers
@@ -363,10 +373,10 @@ const App: React.FC = () => {
         return (
           <ClosureHistory
             onBack={goBack}
+            getClosureHistory={getClosureHistory}
           />
         );
 
-      // 🔥 EXPENSES MANAGER COMPLETAMENTE CONECTADO
       case 'expenses':
         return (
           <ExpensesManager
@@ -381,13 +391,13 @@ const App: React.FC = () => {
           />
         );
 
-      // 🔥 FINANCIAL REPORTS YA FUNCIONA - LEE DEL ECOSISTEMA UNIFICADO
       case 'financial-reports':
         return (
           <FinancialReports
             onBack={goBack}
-            cashRegister={cashRegister}
-            todaysOrders={getTodaysOrders()}
+            expenses={expenses || []}
+            getFinancialStats={getFinancialStats}
+            getClosureHistory={getClosureHistory}
           />
         );
 
@@ -402,7 +412,7 @@ const App: React.FC = () => {
             onPayOrder={handlePayOrder}
             onOpenCash={() => setShowOpenCash(true)}
             onGoToMenuManager={() => setCurrentView('menu-manager')}
-            onGoToReports={() => setCurrentView('reports')}
+            onGoToReports={() => handleGoToReports()}
             onGoToClosureHistory={() => setCurrentView('closure-history')}
             onShowSettings={() => setShowSettings(true)}
           />
@@ -427,7 +437,6 @@ const App: React.FC = () => {
         onComplete={handlePaymentSuccess}
       />
 
-      {/* 🔥 SETTINGS MODAL CON TODAS LAS FUNCIONES INTEGRADAS */}
       <SettingsModal
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
@@ -438,7 +447,7 @@ const App: React.FC = () => {
         }}
         onCloseCash={() => {
           setShowSettings(false);
-          setCurrentView('reports');
+          handleCloseCash();
         }}
         onGoToMenuManager={() => {
           setShowSettings(false);
@@ -446,7 +455,7 @@ const App: React.FC = () => {
         }}
         onGoToReports={() => {
           setShowSettings(false);
-          setCurrentView('reports');
+          handleGoToReports();
         }}
         onGoToClosureHistory={() => {
           setShowSettings(false);
@@ -461,14 +470,6 @@ const App: React.FC = () => {
           setCurrentView('financial-reports');
         }}
       />
-
-      {/* 🔥 INDICATOR DEL ECOSISTEMA UNIFICADO */}
-      <div className="fixed bottom-4 right-4 z-40">
-        <div className="bg-green-600 text-white px-4 py-2 rounded-full shadow-lg flex items-center space-x-2">
-          <div className="w-2 h-2 bg-green-300 rounded-full animate-pulse"></div>
-          <span className="text-sm font-medium">🔥 Ecosistema Integrado</span>
-        </div>
-      </div>
     </>
   );
 };

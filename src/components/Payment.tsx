@@ -19,44 +19,82 @@ const Payment: React.FC<PaymentProps> = ({
   const [amountReceived, setAmountReceived] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // 🔥 FUNCIÓN DE REDONDEO PRECISO
+  const roundToTwo = (num: number): number => {
+    return Math.round((num + Number.EPSILON) * 100) / 100;
+  };
+
   const formatCurrency = (amount: number, curr: string = 'CRC') => {
     if (curr === 'USD') {
-      return `$${amount.toFixed(2)}`;
+      return `$${roundToTwo(amount).toFixed(2)}`;
     }
     return `₡${Math.round(amount).toLocaleString('es-CR')}`;
   };
 
   const exchangeRate = 520; // 1 USD = 520 CRC (aproximado)
 
-  const convertAmount = (amount: number, fromCurrency: string, toCurrency: string) => {
-    if (fromCurrency === toCurrency) return amount;
+  // 🔥 CONVERSIÓN CON REDONDEO PRECISO
+  const convertAmount = (amount: number, fromCurrency: string, toCurrency: string): number => {
+    if (fromCurrency === toCurrency) return roundToTwo(amount);
+    
     if (fromCurrency === 'CRC' && toCurrency === 'USD') {
-      return amount / exchangeRate;
+      const converted = amount / exchangeRate;
+      return roundToTwo(converted);
     }
+    
     if (fromCurrency === 'USD' && toCurrency === 'CRC') {
-      return amount * exchangeRate;
+      const converted = amount * exchangeRate;
+      return roundToTwo(converted);
     }
-    return amount;
+    
+    return roundToTwo(amount);
   };
 
-  const getOrderTotal = () => {
+  // 🔥 TOTAL CALCULADO CON PRECISIÓN
+  const getOrderTotal = (): number => {
     if (currency === 'USD') {
       return convertAmount(order.total, 'CRC', 'USD');
     }
-    return order.total;
+    return roundToTwo(order.total);
   };
 
-  const getChange = () => {
-    const received = parseFloat(amountReceived) || 0;
+  // 🔥 CAMBIO CALCULADO CON PRECISIÓN
+  const getChange = (): number => {
+    const received = roundToTwo(parseFloat(amountReceived) || 0);
     const total = getOrderTotal();
-    return Math.max(0, received - total);
+    const change = received - total;
+    return roundToTwo(Math.max(0, change));
   };
 
-  const canProcessPayment = () => {
+  // 🔥 VALIDACIÓN PRECISA
+  const canProcessPayment = (): boolean => {
     if (paymentMethod === 'card') return true;
-    const received = parseFloat(amountReceived) || 0;
+    
+    const received = roundToTwo(parseFloat(amountReceived) || 0);
     const total = getOrderTotal();
-    return received >= total;
+    
+    // Usar tolerancia de 1 centavo para evitar problemas de precisión
+    return received >= (total - 0.01);
+  };
+
+  // 🔥 INPUT HANDLER CON REDONDEO
+  const handleAmountChange = (value: string): void => {
+    // Solo permitir números y un punto decimal
+    const cleanValue = value.replace(/[^0-9.]/g, '');
+    
+    // Evitar múltiples puntos decimales
+    const parts = cleanValue.split('.');
+    if (parts.length > 2) {
+      return;
+    }
+    
+    // Limitar a 2 decimales
+    if (parts[1] && parts[1].length > 2) {
+      parts[1] = parts[1].substring(0, 2);
+    }
+    
+    const finalValue = parts.join('.');
+    setAmountReceived(finalValue);
   };
 
   const handleProcessPayment = async () => {
@@ -67,16 +105,23 @@ const Payment: React.FC<PaymentProps> = ({
     // Simular procesamiento
     await new Promise(resolve => setTimeout(resolve, 1500));
 
+    // 🔥 DATOS DE PAGO CON PRECISIÓN
+    const total = getOrderTotal();
+    const received = roundToTwo(parseFloat(amountReceived) || 0);
+    const change = getChange();
+
     const paymentData = {
       method: paymentMethod,
       currency,
-      amount: paymentMethod === 'cash' ? parseFloat(amountReceived) : getOrderTotal(),
-      total: getOrderTotal(),
-      change: paymentMethod === 'cash' ? getChange() : 0,
+      amount: total, // Siempre usar el total exacto
+      received: paymentMethod === 'cash' ? received : total,
+      total: total,
+      change: paymentMethod === 'cash' ? change : 0,
       orderId: order.id,
       tableNumber: table.number
     };
 
+    console.log('💳 Datos de pago enviados:', paymentData);
     onProcessPayment(paymentData);
     setIsProcessing(false);
   };
@@ -167,6 +212,9 @@ const Payment: React.FC<PaymentProps> = ({
             <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center">
               <DollarSign className="w-6 h-6 mr-3 text-blue-600" />
               Método de Pago
+              <span className="ml-4 text-sm bg-green-100 text-green-700 px-3 py-1 rounded-full">
+                🔥 Precisión Corregida
+              </span>
             </h2>
 
             {/* Currency Selection */}
@@ -232,9 +280,9 @@ const Payment: React.FC<PaymentProps> = ({
                   Monto Recibido
                 </label>
                 <input
-                  type="number"
+                  type="text"
                   value={amountReceived}
-                  onChange={(e) => setAmountReceived(e.target.value)}
+                  onChange={(e) => handleAmountChange(e.target.value)}
                   placeholder={`Ingrese monto en ${currency}`}
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all text-lg font-medium"
                 />
@@ -260,6 +308,12 @@ const Payment: React.FC<PaymentProps> = ({
                       <span className="text-xl font-bold text-emerald-600">
                         {formatCurrency(getChange(), currency)}
                       </span>
+                    </div>
+                    {/* 🔥 DEBUG INFO TEMPORAL - REMOVER EN PRODUCCIÓN */}
+                    <div className="mt-2 text-xs text-slate-400 space-y-1">
+                      <div>Recibido: {roundToTwo(parseFloat(amountReceived) || 0)}</div>
+                      <div>Total: {getOrderTotal()}</div>
+                      <div>Cambio calculado: {getChange()}</div>
                     </div>
                   </div>
                 )}
