@@ -129,23 +129,67 @@ export const useRestaurant = () => {
     triggerUpdate();
   }, [restaurant, triggerUpdate]);
 
-  // 🔥 MÉTODOS DE EXPENSES - OPTIMIZADOS
-  const addExpense = useCallback((expense: Omit<Expense, 'id' | 'date'>): Expense => {
+  // 🔥 MÉTODOS DE EXPENSES - CORREGIDOS Y COMPLETOS
+  const addExpense = useCallback((expense: Omit<Expense, 'id' | 'createdAt'>): Expense => {
+    // 🔥 CAMBIO CRÍTICO: Ya no omitir 'date', sino 'createdAt'
     const newExpense = restaurant.addExpense(expense);
-    console.log('💸 Expense agregado:', newExpense.description, '₡' + newExpense.amount);
+    console.log('💸 Expense agregado via hook:', newExpense.description, '₡' + newExpense.amount);
     triggerUpdate();
     return newExpense;
   }, [restaurant, triggerUpdate]);
 
   const updateExpense = useCallback((expense: Expense) => {
     restaurant.updateExpense(expense);
+    console.log('✏️ Expense actualizado via hook:', expense.id);
     triggerUpdate();
   }, [restaurant, triggerUpdate]);
 
   const deleteExpense = useCallback((expenseId: string) => {
     restaurant.deleteExpense(expenseId);
+    console.log('🗑️ Expense eliminado via hook:', expenseId);
     triggerUpdate();
   }, [restaurant, triggerUpdate]);
+
+  // 🔥 MÉTODO MEJORADO: Expenses de hoy
+  const getTodaysExpenses = useCallback(() => {
+    return restaurant.getTodaysExpenses();
+  }, [restaurant]);
+
+  // 🔥 MÉTODO NUEVO: Expenses por período específico
+  const getExpensesInPeriod = useCallback((startDate: string, endDate: string) => {
+    return restaurant.getExpensesByPeriod(startDate, endDate);
+  }, [restaurant]);
+
+  // 🔥 MÉTODO MEJORADO: Expenses por categoría
+  const getExpensesByCategory = useCallback((expenses?: Expense[]) => {
+    if (expenses) {
+      // Si se pasan expenses específicos, usar esos
+      return expenses.reduce((acc, expense) => {
+        if (!acc[expense.category]) {
+          acc[expense.category] = 0;
+        }
+        const amountInCRC = expense.currency === 'USD' ? expense.amount * 520 : expense.amount;
+        acc[expense.category] += amountInCRC;
+        return acc;
+      }, {} as Record<string, number>);
+    }
+    // Si no se pasan, usar todos los expenses del restaurant
+    return restaurant.getExpensesByCategory();
+  }, [restaurant]);
+
+  // 🔥 MÉTODO MEJORADO: Expenses por tipo (gastos vs inversiones)
+  const getExpensesByType = useCallback((expenses?: Expense[]) => {
+    const expensesToAnalyze = expenses || restaurant.getExpenses();
+    return expensesToAnalyze.reduce((acc, expense) => {
+      const amountInCRC = expense.currency === 'USD' ? expense.amount * 520 : expense.amount;
+      if (expense.type === 'gasto') {
+        acc.gastos += amountInCRC;
+      } else {
+        acc.inversiones += amountInCRC;
+      }
+      return acc;
+    }, { gastos: 0, inversiones: 0 });
+  }, [restaurant]);
 
   // 🔥 HISTORIAL DE CIERRES - SIN LOGS MASIVOS
   const getClosureHistory = useCallback(() => {
@@ -222,25 +266,14 @@ export const useRestaurant = () => {
     updateMenuItem,
     deleteMenuItem,
     
-    // 🔥 Métodos de Gastos
+    // 🔥 Métodos de Gastos - CORREGIDOS Y COMPLETOS
     addExpense,
     updateExpense,
     deleteExpense,
-    getExpensesByCategory: restaurant.getExpensesByCategory,
-    getExpensesByType: () => {
-      const expenses = restaurant.getExpenses();
-      return expenses.reduce((acc, expense) => {
-        const amountInCRC = expense.currency === 'USD' ? expense.amount * 520 : expense.amount;
-        if (expense.type === 'gasto') {
-          acc.gastos += amountInCRC;
-        } else {
-          acc.inversiones += amountInCRC;
-        }
-        return acc;
-      }, { gastos: 0, inversiones: 0 });
-    },
-    getTodaysExpenses: useCallback(() => restaurant.getTodaysExpenses(), [restaurant]),
-    getExpensesInPeriod: restaurant.getExpensesByPeriod,
+    getExpensesByCategory,
+    getExpensesByType,
+    getTodaysExpenses,
+    getExpensesInPeriod,
     
     // Historial de Cierres
     getClosureHistory,

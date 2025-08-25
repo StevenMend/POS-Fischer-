@@ -25,7 +25,7 @@ interface ExpensesManagerProps {
   onBack: () => void;
   // 🔥 CONECTADO AL HOOK - NO MÁS LOCALSTORAGE DIRECTO
   expenses: Expense[];
-  addExpense: (expense: Omit<Expense, 'id' | 'createdAt'>) => Expense;
+  addExpense: (expense: Omit<Expense, 'id' | 'createdAt'>) => Expense; // 🔥 SIGNATURE CORREGIDA
   updateExpense: (expense: Expense) => void;
   deleteExpense: (expenseId: string) => void;
   getExpensesByCategory: (expenses?: Expense[]) => Record<string, number>;
@@ -101,28 +101,30 @@ const ExpensesManager: React.FC<ExpensesManagerProps> = ({
       return;
     }
 
+    // 🔥 PREPARAR DATOS SEGÚN NUEVA SIGNATURE (sin 'id' ni 'createdAt')
     const expenseData: Omit<Expense, 'id' | 'createdAt'> = {
       description: formData.description.trim(),
       amount,
       currency: formData.currency,
       category: formData.category,
       date: formData.date,
-      type: formData.type
+      type: formData.type,
+      // updatedAt es opcional según la interface
     };
 
     if (editingExpense) {
-      // 🔥 USAR EL HOOK EN LUGAR DE LOCALSTORAGE
+      // 🔥 PARA EDICIÓN: usar el expense completo con id y createdAt existentes
       const updatedExpense: Expense = {
-        ...editingExpense,
-        ...expenseData,
-        updatedAt: new Date().toISOString()
+        ...editingExpense, // Mantiene id y createdAt originales
+        ...expenseData,    // Actualiza los campos modificables
+        updatedAt: new Date().toISOString() // Marca como actualizado
       };
       updateExpense(updatedExpense);
-      console.log('✅ Gasto actualizado a través del hook:', updatedExpense.id);
+      console.log('✅ Expense actualizado:', updatedExpense.id);
     } else {
-      // 🔥 USAR EL HOOK EN LUGAR DE LOCALSTORAGE
+      // 🔥 PARA CREACIÓN: usar la signature correcta (sin id ni createdAt)
       const newExpense = addExpense(expenseData);
-      console.log('✅ Gasto agregado a través del hook:', newExpense.id);
+      console.log('✅ Expense agregado:', newExpense.id);
     }
 
     resetForm();
@@ -143,9 +145,8 @@ const ExpensesManager: React.FC<ExpensesManagerProps> = ({
 
   const handleDelete = (expense: Expense) => {
     if (window.confirm(`¿Estás seguro de eliminar "${expense.description}"?`)) {
-      // 🔥 USAR EL HOOK EN LUGAR DE LOCALSTORAGE
       deleteExpense(expense.id);
-      console.log('✅ Gasto eliminado a través del hook:', expense.id);
+      console.log('✅ Expense eliminado:', expense.id);
     }
   };
 
@@ -205,7 +206,7 @@ const ExpensesManager: React.FC<ExpensesManagerProps> = ({
                   Gestión de Gastos e Inversiones
                 </h1>
                 <p className="text-sm tablet:text-base text-slate-500 font-medium">
-                  🔥 CONECTADO AL ECOSISTEMA UNIFICADO
+                  Sistema unificado con persistencia histórica
                 </p>
               </div>
             </div>
@@ -340,7 +341,7 @@ const ExpensesManager: React.FC<ExpensesManagerProps> = ({
             <Receipt className="w-5 tablet:w-7 h-5 tablet:h-7 mr-3 text-red-600" />
             Registros de Gastos ({filteredExpenses.length})
             <span className="ml-4 text-sm bg-green-100 text-green-700 px-3 py-1 rounded-full">
-              🔥 ECOSISTEMA INTEGRADO
+              Persistencia histórica
             </span>
           </h2>
 

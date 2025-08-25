@@ -245,24 +245,24 @@ export class Restaurant {
     return newOrder;
   }
 
-  // 🔥 CORRECCIÓN DEL MÉTODO openCashRegister - RESET COMPLETO
+  // 🔥 MÉTODO CORREGIDO - NO BORRAR EXPENSES
   openCashRegister(openingCashCRC: number, openingCashUSD: number): void {
-    console.log('🏦 Abriendo caja registradora con RESET COMPLETO...', { openingCashCRC, openingCashUSD });
+    console.log('🏦 Abriendo caja registradora...');
     
-    // 🧹 PRIMERO: RESET COMPLETO DE DATOS DEL DÍA ANTERIOR
-    console.log('🧹 Limpiando datos del día anterior...');
+    // 🧹 LIMPIAR SOLO DATOS OPERATIVOS DEL DÍA ANTERIOR
+    console.log('🧹 Limpiando datos operativos...');
     
-    // 🗑️ LIMPIAR ÓRDENES DEL DÍA ANTERIOR
+    // 🗑️ LIMPIAR ÓRDENES DEL DÍA ANTERIOR (temporal)
     this.orders.clear();
     console.log('✅ Órdenes del día anterior eliminadas');
     
-    // 🗑️ LIMPIAR PAGOS DEL DÍA ANTERIOR  
+    // 🗑️ LIMPIAR PAGOS DEL DÍA ANTERIOR (temporal)
     this.payments = [];
     console.log('✅ Pagos del día anterior eliminados');
     
-    // 🗑️ LIMPIAR EXPENSES DEL DÍA ANTERIOR  
-    this.expenses.clear();
-    console.log('✅ Expenses del día anterior eliminados');
+    // 🔥 CRÍTICO: NO borrar expenses - estos persisten por fecha específica
+    // this.expenses.clear(); // ❌ COMENTADO - expenses se mantienen
+    console.log('📅 Expenses conservados (persisten por fecha específica)');
     
     // 🍽️ LIBERAR TODAS LAS MESAS (estado limpio)
     this.tables.forEach(table => {
@@ -272,7 +272,7 @@ export class Restaurant {
     });
     console.log('✅ Todas las mesas liberadas');
 
-    // 🔥 SEGUNDO: INICIALIZAR CAJA NUEVA CON DATOS EN CERO
+    // 🔥 INICIALIZAR CAJA NUEVA CON DATOS EN CERO
     this.cashRegister = {
       // 🏦 ESTADO OPERATIVO
       isOpen: true,
@@ -301,8 +301,7 @@ export class Restaurant {
     // 💾 GUARDAR ESTADO LIMPIO
     this.saveToStorage();
     
-    console.log('✅ Caja abierta con estado completamente limpio');
-    console.log('📊 Dashboard se mostrará con datos en cero');
+    console.log('✅ Caja abierta - Expenses conservados para análisis histórico');
   }
 
   // 🔥 MÉTODO closeCashRegister CORREGIDO CON FECHAS EXACTAS
@@ -346,8 +345,8 @@ export class Restaurant {
     // 💾 GUARDAR EN HISTORIAL PRIMERO (con datos reales)
     this.saveToClosure(record);
 
-    // 🧹 AHORA SÍ RESETEAR COMPLETAMENTE PARA PRÓXIMO DÍA
-    console.log('🧹 Reseteando completamente el sistema...');
+    // 🧹 AHORA SÍ RESETEAR COMPLETAMENTE PARA PRÓXIMO DÍA (PERO NO EXPENSES)
+    console.log('🧹 Reseteando sistema operativo...');
     
     // 🔥 CAJA CERRADA Y DATOS RESETEADOS
     this.cashRegister = {
@@ -382,8 +381,9 @@ export class Restaurant {
     console.log('🗑️ Limpiando pagos del día...');
     this.payments = [];
     
-    console.log('🗑️ Limpiando expenses del día...');
-    this.expenses.clear();
+    // 🔥 CRÍTICO: NO limpiar expenses - persisten para análisis histórico
+    // this.expenses.clear(); // ❌ COMENTADO - expenses persisten
+    console.log('📅 Expenses conservados para análisis histórico');
     
     console.log('🍽️ Liberando todas las mesas...');
     this.tables.forEach(table => {
@@ -395,8 +395,7 @@ export class Restaurant {
     // 💾 GUARDAR ESTADO LIMPIO
     this.saveToStorage();
     
-    console.log('✅ Caja cerrada - Sistema completamente reseteado');
-    console.log('📊 Dashboard se mostrará como "Caja Cerrada"');
+    console.log('✅ Caja cerrada - Expenses conservados para comparaciones semanales/mensuales');
     
     return record;
   }
@@ -517,27 +516,39 @@ export class Restaurant {
   }
 
   // ==========================================
-  // 🔥 GESTIÓN COMPLETA DE EXPENSES
+  // 🔥 GESTIÓN COMPLETA DE EXPENSES - CORREGIDA
   // ==========================================
 
-  addExpense(expense: Omit<Expense, 'id' | 'date'>): Expense {
+  addExpense(expense: Omit<Expense, 'id' | 'createdAt'>): Expense {
     console.log('💸 Agregando expense:', expense.description, `₡${expense.amount}`);
     
     const newExpense: Expense = {
       ...expense,
       id: generateId(),
-      date: getClosureDateString(), // Siempre fecha actual en formato YYYY-MM-DD
+      // 🔥 USAR FECHA ESPECÍFICA del parámetro o hoy por defecto
+      date: expense.date || getClosureDateString(),
+      // 🔥 AGREGAR createdAt OBLIGATORIO (timestamp exacto)
+      createdAt: new Date().toISOString(),
     };
     
+    // 💾 Guardar en expenses map (persistente)
     this.expenses.set(newExpense.id, newExpense);
     this.saveToStorage();
+    
+    console.log(`✅ Expense guardado con fecha: ${newExpense.date} (ID: ${newExpense.id})`);
     return newExpense;
   }
 
   updateExpense(expense: Expense): void {
     console.log('✏️ Actualizando expense:', expense.description);
     
-    this.expenses.set(expense.id, expense);
+    // 🔥 Asegurar que tenga updatedAt
+    const updatedExpense = {
+      ...expense,
+      updatedAt: new Date().toISOString()
+    };
+    
+    this.expenses.set(updatedExpense.id, updatedExpense);
     this.saveToStorage();
   }
 
@@ -554,10 +565,16 @@ export class Restaurant {
     );
   }
 
+  // 🔥 MÉTODO MEJORADO: Obtener expenses por rango de fechas
   getExpensesByPeriod(startDate: string, endDate: string): Expense[] {
-    return this.getExpenses().filter(expense => {
+    console.log(`📊 Buscando expenses entre ${startDate} y ${endDate}`);
+    
+    const expenses = this.getExpenses().filter(expense => {
       return expense.date >= startDate && expense.date <= endDate;
     });
+    
+    console.log(`📊 Encontrados ${expenses.length} expenses en el período`);
+    return expenses;
   }
 
   getTodaysExpenses(): Expense[] {
@@ -565,8 +582,20 @@ export class Restaurant {
     return this.getExpenses().filter(expense => expense.date === today);
   }
 
-  getExpensesByCategory(category: string): Expense[] {
-    return this.getExpenses().filter(expense => expense.category === category);
+  getExpensesByCategory(category?: string): Record<string, number> {
+    const expenses = category 
+      ? this.getExpenses().filter(expense => expense.category === category)
+      : this.getExpenses();
+      
+    return expenses.reduce((acc, expense) => {
+      if (!acc[expense.category]) {
+        acc[expense.category] = 0;
+      }
+      // Convertir a CRC para uniformidad
+      const amountInCRC = expense.currency === 'USD' ? expense.amount * 520 : expense.amount;
+      acc[expense.category] += amountInCRC;
+      return acc;
+    }, {} as Record<string, number>);
   }
 
   // 🔥 NUEVO: Obtener cierres por período (para estadísticas financieras)
@@ -582,7 +611,7 @@ export class Restaurant {
     }
   }
 
-  // 🔥 NUEVO: Estadísticas financieras reales
+  // 🔥 MÉTODO MEJORADO: Estadísticas financieras por período real
   getFinancialStats(period: 'week' | 'month' | 'today' = 'today'): {
     totalIncome: { CRC: number; USD: number };
     totalExpenses: { CRC: number; USD: number };
@@ -602,6 +631,8 @@ export class Restaurant {
       endDate = dates.endDate;
     }
     
+    console.log(`📊 Calculando stats para período: ${startDate} a ${endDate}`);
+    
     // 💰 INGRESOS: Suma de todos los cierres del período
     const closures = this.getClosuresByPeriod(startDate, endDate);
     const totalIncome = {
@@ -609,7 +640,7 @@ export class Restaurant {
       USD: closures.reduce((sum, record) => sum + (record.totalSalesUSD || 0), 0)
     };
     
-    // 💸 GASTOS: Suma de expenses del período
+    // 💸 GASTOS: Suma de expenses del período (fecha específica)
     const expenses = this.getExpensesByPeriod(startDate, endDate);
     const totalExpenses = {
       CRC: expenses.filter(e => e.currency === 'CRC').reduce((sum, e) => sum + e.amount, 0),
@@ -639,24 +670,35 @@ export class Restaurant {
     const totalOrders = closures.reduce((sum, record) => sum + (record.totalOrders || 0), 0);
     const averageOrderValue = totalOrders > 0 ? totalIncome.CRC / totalOrders : 0;
     
-    // 🚨 ALERTAS
+    // 🚨 ALERTAS INTELIGENTES
     const alerts: string[] = [];
     
     // Alerta: Gastos muy altos vs ingresos
-    const expenseRatio = totalIncome.CRC > 0 ? (totalExpenses.CRC / totalIncome.CRC) * 100 : 0;
+    const totalIncomeCRC = totalIncome.CRC + (totalIncome.USD * 520);
+    const totalExpensesCRC = totalExpenses.CRC + (totalExpenses.USD * 520);
+    const expenseRatio = totalIncomeCRC > 0 ? (totalExpensesCRC / totalIncomeCRC) * 100 : 0;
+    
     if (expenseRatio > 40) {
       alerts.push(`Gastos representan ${expenseRatio.toFixed(1)}% de ingresos (muy alto)`);
     }
     
     // Alerta: Pérdidas
-    if (netProfit.CRC < 0) {
-      alerts.push(`Pérdida neta de ₡${Math.abs(netProfit.CRC).toLocaleString()}`);
+    const netProfitCRC = netProfit.CRC + (netProfit.USD * 520);
+    if (netProfitCRC < 0) {
+      alerts.push(`Pérdida neta de ₡${Math.abs(netProfitCRC).toLocaleString()}`);
     }
     
     // Alerta: Sin ventas en el período
-    if (totalIncome.CRC === 0 && period !== 'today') {
+    if (totalIncomeCRC === 0 && period !== 'today') {
       alerts.push('Sin ventas registradas en el período');
     }
+    
+    // Alerta: Gastos sin ingresos
+    if (totalExpensesCRC > 0 && totalIncomeCRC === 0) {
+      alerts.push(`Hay gastos (₡${totalExpensesCRC.toLocaleString()}) pero sin ingresos`);
+    }
+    
+    console.log(`📊 Stats calculados - Ingresos: ₡${totalIncomeCRC.toLocaleString()}, Gastos: ₡${totalExpensesCRC.toLocaleString()}`);
     
     return {
       totalIncome,
@@ -763,7 +805,6 @@ export class Restaurant {
     }
   }
 
-  // 🔥 FUNCIÓN FALTANTE - COMPLETAR DESDE LA LÍNEA 766
   private serializeTables(): any[] {
     return Array.from(this.tables.values()).map(table => ({
       id: table.id,
@@ -821,6 +862,8 @@ export class Restaurant {
       category: expense.category,
       type: expense.type,
       date: expense.date,
+      createdAt: expense.createdAt,
+      updatedAt: expense.updatedAt,
       notes: expense.notes
     }));
   }
@@ -885,15 +928,29 @@ export class Restaurant {
         this.payments = data.payments;
       }
 
-      // Cargar expenses
+      // 🔥 CARGAR EXPENSES CORREGIDO
       if (data.expenses) {
         this.expenses.clear();
         data.expenses.forEach((expenseData: any) => {
-          this.expenses.set(expenseData.id, expenseData);
+          // 🔥 Asegurar que todos los campos estén presentes
+          const expense: Expense = {
+            id: expenseData.id,
+            description: expenseData.description,
+            amount: expenseData.amount,
+            currency: expenseData.currency,
+            category: expenseData.category,
+            type: expenseData.type,
+            date: expenseData.date,
+            createdAt: expenseData.createdAt || new Date().toISOString(),
+            updatedAt: expenseData.updatedAt,
+            notes: expenseData.notes
+          };
+          this.expenses.set(expense.id, expense);
         });
       }
 
       console.log('✅ Datos cargados exitosamente');
+      console.log(`📊 Expenses cargados: ${this.expenses.size}`);
       
     } catch (error) {
       console.error('🚨 Error cargando datos:', error);
