@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Dashboard from './components/Dashboard';
 import POS from './components/POS';
 import Payment from './components/Payment';
@@ -10,6 +10,8 @@ import Reports from './components/Reports';
 import ClosureHistory from './components/ClosureHistory';
 import ExpensesManager from './components/ExpensesManager';
 import FinancialReports from './components/FinancialReports';
+// 🔥 NUEVO IMPORT
+import RecoveryModal from './components/RecoveryModal';
 
 import { useRestaurant } from './hooks/useRestaurant';
 
@@ -41,7 +43,13 @@ const App: React.FC = () => {
     getDailySummary,
     getFinancialStats,
     getClosureHistory,
-    refreshData
+    refreshData,
+    // 🔥 NUEVOS HOOKS PARA RECOVERY
+    detectInconsistentStates,
+    repairInconsistentStates,
+    freeTable,
+    cancelOrderAndFreeTable,
+    resetOrder
   } = useRestaurant();
 
   // Estados para navegación y modales
@@ -62,6 +70,40 @@ const App: React.FC = () => {
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
   const [paymentSuccessData, setPaymentSuccessData] = useState<any>(null);
   const [showSettings, setShowSettings] = useState(false);
+
+  // 🔥 NUEVOS ESTADOS PARA RECOVERY
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [navigationState, setNavigationState] = useState(null);
+
+  // 🔥 NUEVO: PERSISTENCE SYSTEM
+  useEffect(() => {
+    // Detectar problemas al cargar
+    const issues = detectInconsistentStates();
+    if (issues.length > 0) {
+      setShowRecoveryModal(true);
+    }
+    
+    // Intentar recuperar navegación
+    attemptNavigationRecovery();
+  }, []);
+
+  // 🔥 NUEVO: RECOVERY NAVIGATION HANDLER
+  const handleContinueOrder = (tableNumber: number, orderId: string) => {
+    const table = getTableByNumber(tableNumber);
+    const order = getOrder(orderId);
+    
+    if (table && order) {
+      setSelectedTable(table);
+      setSelectedOrder(order);
+      setCurrentView('pos'); // o 'payment' según el estado
+    }
+  };
+
+  // 🔥 FUNCIÓN HELPER PARA RECOVERY
+  const attemptNavigationRecovery = () => {
+    // Lógica para recuperar estado de navegación si es necesario
+    // Esto se puede expandir según las necesidades específicas
+  };
 
   // Loading state
   if (loading) {
@@ -288,6 +330,22 @@ const App: React.FC = () => {
     }
   };
 
+  // 🔥 NUEVOS HANDLERS PARA PAYMENT
+  const handleEditOrder = () => {
+    console.log('✏️ Editando orden - Volver al POS');
+    setCurrentView('pos');
+  };
+
+  const handleCancelOrder = () => {
+    if (selectedOrder && confirm('¿Seguro que quieres cancelar esta orden?')) {
+      console.log('🗑️ Cancelando orden completa');
+      cancelOrderAndFreeTable(selectedOrder.id);
+      setCurrentView('dashboard');
+      setSelectedTable(null);
+      setSelectedOrder(null);
+    }
+  };
+
   const handlePaymentSuccess = () => {
     setShowPaymentSuccess(false);
     setPaymentSuccessData(null);
@@ -344,6 +402,8 @@ const App: React.FC = () => {
             table={selectedTable}
             onBack={goBack}
             onProcessPayment={handleProcessPayment}
+            onEditOrder={handleEditOrder}        // 🔥 NUEVO
+            onCancelOrder={handleCancelOrder}    // 🔥 NUEVO
           />
         );
 
@@ -469,6 +529,18 @@ const App: React.FC = () => {
           setShowSettings(false);
           setCurrentView('financial-reports');
         }}
+      />
+
+      {/* 🔥 NUEVO: RECOVERY MODAL */}
+      <RecoveryModal
+        isOpen={showRecoveryModal}
+        onClose={() => setShowRecoveryModal(false)}
+        detectInconsistentStates={detectInconsistentStates}
+        repairInconsistentStates={repairInconsistentStates}
+        freeTable={freeTable}
+        cancelOrderAndFreeTable={cancelOrderAndFreeTable}
+        resetOrder={resetOrder}
+        onContinueOrder={handleContinueOrder}
       />
     </>
   );

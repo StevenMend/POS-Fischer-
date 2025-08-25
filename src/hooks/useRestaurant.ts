@@ -36,6 +36,34 @@ export const useRestaurant = () => {
     return record;
   }, [restaurant, triggerUpdate]);
 
+  // 🛡️ MÉTODOS DE RECOVERY SYSTEM - NUEVOS
+  const detectInconsistentStates = useCallback(() => {
+    return restaurant.detectInconsistentStates();
+  }, [restaurant]);
+
+  const repairInconsistentStates = useCallback(() => {
+    const result = restaurant.repairInconsistentStates();
+    triggerUpdate();
+    return result;
+  }, [restaurant, triggerUpdate]);
+
+  const freeTable = useCallback((tableNumber: number) => {
+    restaurant.freeTable(tableNumber);
+    triggerUpdate();
+  }, [restaurant, triggerUpdate]);
+
+  const cancelOrderAndFreeTable = useCallback((orderId: string) => {
+    const result = restaurant.cancelOrderAndFreeTable(orderId);
+    triggerUpdate();
+    return result;
+  }, [restaurant, triggerUpdate]);
+
+  const resetOrder = useCallback((orderId: string) => {
+    const newOrder = restaurant.resetOrder(orderId);
+    triggerUpdate();
+    return newOrder;
+  }, [restaurant, triggerUpdate]);
+
   // MÉTODOS DE ÓRDENES - SIN LOGS EXCESIVOS
   const createOrder = useCallback((tableNumber: number, notes?: string): Order => {
     const order = restaurant.createOrder(tableNumber, notes);
@@ -173,6 +201,13 @@ export const useRestaurant = () => {
     // Métodos de Caja
     openCashRegister,
     closeCashRegister,
+    
+    // 🛡️ MÉTODOS DE RECOVERY SYSTEM - NUEVOS
+    detectInconsistentStates,
+    repairInconsistentStates,
+    freeTable,
+    cancelOrderAndFreeTable,
+    resetOrder,
     
     // Métodos de Órdenes
     createOrder,

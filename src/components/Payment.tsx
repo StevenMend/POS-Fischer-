@@ -1,18 +1,23 @@
 import React, { useState } from 'react';
-import { ArrowLeft, CreditCard, DollarSign, Calculator, CheckCircle } from 'lucide-react';
+import { ArrowLeft, CreditCard, DollarSign, Calculator, CheckCircle, Edit3, Trash2 } from 'lucide-react';
 
+// 🔥 PROPS ACTUALIZADAS (agregando las nuevas)
 interface PaymentProps {
   order: any;
   table: any;
   onBack: () => void;
   onProcessPayment: (paymentData: any) => void;
+  onEditOrder?: () => void;        // 🔥 NUEVO
+  onCancelOrder?: () => void;      // 🔥 NUEVO
 }
 
 const Payment: React.FC<PaymentProps> = ({
   order,
   table,
   onBack,
-  onProcessPayment
+  onProcessPayment,
+  onEditOrder,        // 🔥 NUEVO
+  onCancelOrder       // 🔥 NUEVO
 }) => {
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card'>('cash');
   const [currency, setCurrency] = useState<'CRC' | 'USD'>('CRC');
@@ -216,6 +221,31 @@ const Payment: React.FC<PaymentProps> = ({
                 🔥 Precisión Corregida
               </span>
             </h2>
+
+            {/* 🔥 NUEVOS BOTONES DE EDICIÓN (AGREGADOS AQUÍ) */}
+            {(onEditOrder || onCancelOrder) && (
+              <div className="flex space-x-3 mb-6">
+                {onEditOrder && (
+                  <button
+                    onClick={onEditOrder}
+                    className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-colors flex items-center justify-center space-x-2"
+                  >
+                    <Edit3 className="w-5 h-5" />
+                    <span>Editar Orden</span>
+                  </button>
+                )}
+                
+                {onCancelOrder && (
+                  <button
+                    onClick={onCancelOrder}
+                    className="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-medium transition-colors flex items-center justify-center space-x-2"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                    <span>Cancelar Orden</span>
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Currency Selection */}
             <div className="mb-6">

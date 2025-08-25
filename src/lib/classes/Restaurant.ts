@@ -59,161 +59,347 @@ export class Restaurant {
     }
   }
 
-  // 🔥 CORRECCIÓN DEL MÉTODO openCashRegister - RESET COMPLETO
-openCashRegister(openingCashCRC: number, openingCashUSD: number): void {
-  console.log('🏦 Abriendo caja registradora con RESET COMPLETO...', { openingCashCRC, openingCashUSD });
-  
-  // 🧹 PRIMERO: RESET COMPLETO DE DATOS DEL DÍA ANTERIOR
-  console.log('🧹 Limpiando datos del día anterior...');
-  
-  // 🗑️ LIMPIAR ÓRDENES DEL DÍA ANTERIOR
-  this.orders.clear();
-  console.log('✅ Órdenes del día anterior eliminadas');
-  
-  // 🗑️ LIMPIAR PAGOS DEL DÍA ANTERIOR  
-  this.payments = [];
-  console.log('✅ Pagos del día anterior eliminados');
-  
-  // 🗑️ LIMPIAR EXPENSES DEL DÍA ANTERIOR  
-  this.expenses.clear();
-  console.log('✅ Expenses del día anterior eliminados');
-  
-  // 🍽️ LIBERAR TODAS LAS MESAS (estado limpio)
-  this.tables.forEach(table => {
-    if (table.status !== 'available') {
-      table.free();
-    }
-  });
-  console.log('✅ Todas las mesas liberadas');
+  // ==========================================
+  // 🛡️ RECOVERY SYSTEM - DETECCIÓN Y REPARACIÓN
+  // ==========================================
 
-  // 🔥 SEGUNDO: INICIALIZAR CAJA NUEVA CON DATOS EN CERO
-  this.cashRegister = {
-    // 🏦 ESTADO OPERATIVO
-    isOpen: true,
+  /**
+   * Detectar estados inconsistentes en el sistema
+   */
+  detectInconsistentStates(): Array<{
+    type: 'empty_order' | 'orphan_table' | 'missing_order';
+    tableNumber: number;
+    orderId?: string;
+    table?: any;
+    order?: any;
+    message: string;
+  }> {
+    console.log('🔍 Detectando estados inconsistentes...');
     
-    // 💰 DINERO FÍSICO BASE (para vueltos) - INICIAL
-    openingCashCRC,
-    openingCashUSD,
-    currentCashCRC: openingCashCRC,     // Empieza igual al inicial
-    currentCashUSD: openingCashUSD,     // Empieza igual al inicial
+    const issues: any[] = [];
     
-    // 📊 VENTAS DEL DÍA - RESET COMPLETO A CERO
-    totalSalesCRC: 0,                   // 🔥 NUEVO DÍA = 0
-    totalSalesUSD: 0,                   // 🔥 NUEVO DÍA = 0
-    totalOrders: 0,                     // 🔥 NUEVO DÍA = 0
+    // 👻 PROBLEMA 1: Mesas ocupadas sin orden o con orden vacía
+    this.tables.forEach(table => {
+      if (table.status === 'occupied') {
+        if (!table.currentOrder) {
+          // Mesa ocupada sin orden
+          issues.push({
+            type: 'orphan_table',
+            tableNumber: table.number,
+            table: table,
+            message: `Mesa ${table.number} está ocupada pero no tiene orden asignada`
+          });
+        } else if (table.currentOrder.items.length === 0 || table.currentOrder.total === 0) {
+          // Mesa ocupada con orden vacía
+          issues.push({
+            type: 'empty_order',
+            tableNumber: table.number,
+            orderId: table.currentOrder.id,
+            table: table,
+            order: table.currentOrder,
+            message: `Mesa ${table.number} tiene una orden vacía (${table.currentOrder.items.length} items, ₡${table.currentOrder.total})`
+          });
+        }
+      }
+    });
+
+    // 🔍 PROBLEMA 2: Órdenes huérfanas (sin mesa asignada)
+    this.orders.forEach(order => {
+      const table = this.getTableByNumber(order.tableNumber);
+      if (!table || table.currentOrder?.id !== order.id) {
+        issues.push({
+          type: 'missing_order',
+          tableNumber: order.tableNumber,
+          orderId: order.id,
+          order: order,
+          message: `Orden ${order.id} no está correctamente asignada a mesa ${order.tableNumber}`
+        });
+      }
+    });
+
+    console.log(`🔍 Detectados ${issues.length} problemas:`, issues.map(i => i.message));
+    return issues;
+  }
+
+  /**
+   * Reparar estados inconsistentes automáticamente
+   */
+  repairInconsistentStates(): {
+    fixed: number;
+    actions: string[];
+  } {
+    console.log('🔧 Reparando estados inconsistentes...');
     
-    // 💳 DESGLOSE DE PAGOS - RESET COMPLETO A CERO
-    cashPaymentsCRC: 0,                 // 🔥 NUEVO DÍA = 0
-    cashPaymentsUSD: 0,                 // 🔥 NUEVO DÍA = 0
-    cardPaymentsCRC: 0,                 // 🔥 NUEVO DÍA = 0
-    cardPaymentsUSD: 0,                 // 🔥 NUEVO DÍA = 0
+    const issues = this.detectInconsistentStates();
+    const actions: string[] = [];
+    let fixed = 0;
+
+    issues.forEach(issue => {
+      switch (issue.type) {
+        case 'orphan_table':
+          // Mesa ocupada sin orden → liberar mesa
+          const orphanTable = this.getTableByNumber(issue.tableNumber);
+          if (orphanTable) {
+            orphanTable.free();
+            actions.push(`Mesa ${issue.tableNumber} liberada (estaba ocupada sin orden)`);
+            fixed++;
+          }
+          break;
+          
+        case 'missing_order':
+          // Orden sin mesa → eliminar orden huérfana
+          if (issue.orderId) {
+            this.orders.delete(issue.orderId);
+            actions.push(`Orden huérfana ${issue.orderId} eliminada`);
+            fixed++;
+          }
+          break;
+          
+        // Las órdenes vacías no se auto-reparan, requieren decisión manual
+      }
+    });
+
+    if (fixed > 0) {
+      this.saveToStorage();
+    }
+
+    console.log(`✅ Reparación automática completada: ${fixed} problemas corregidos`);
+    return { fixed, actions };
+  }
+
+  // ==========================================
+  // 🔧 MÉTODOS DE RECUPERACIÓN MANUAL
+  // ==========================================
+
+  /**
+   * Liberar mesa manteniendo la orden (para casos de error)
+   */
+  freeTable(tableNumber: number): void {
+    console.log('🆓 Liberando mesa:', tableNumber);
     
-    // 📅 TIMESTAMP NUEVO
-    openedAt: new Date()
-  };
-  
-  // 💾 GUARDAR ESTADO LIMPIO
-  this.saveToStorage();
-  
-  console.log('✅ Caja abierta con estado completamente limpio');
-  console.log('📊 Dashboard se mostrará con datos en cero');
-}
+    const table = this.getTableByNumber(tableNumber);
+    if (!table) {
+      throw new Error(`Mesa ${tableNumber} no encontrada`);
+    }
+
+    table.free();
+    this.saveToStorage();
+    console.log(`✅ Mesa ${tableNumber} liberada`);
+  }
+
+  /**
+   * Cancelar orden completamente y liberar mesa
+   */
+  cancelOrderAndFreeTable(orderId: string): boolean {
+    console.log('🗑️ Cancelando orden y liberando mesa:', orderId);
+    
+    const order = this.orders.get(orderId);
+    if (!order) {
+      console.warn('⚠️ Orden no encontrada:', orderId);
+      return false;
+    }
+
+    // Encontrar y liberar la mesa
+    const table = this.getTableByNumber(order.tableNumber);
+    if (table) {
+      table.free();
+      console.log(`✅ Mesa ${table.number} liberada`);
+    }
+
+    // Eliminar la orden
+    this.orders.delete(orderId);
+    this.saveToStorage();
+    
+    console.log('✅ Orden cancelada y mesa liberada');
+    return true;
+  }
+
+  /**
+   * Resetear orden manteniendo mesa ocupada
+   */
+  resetOrder(orderId: string): Order | null {
+    console.log('🔄 Reseteando orden:', orderId);
+    
+    const order = this.orders.get(orderId);
+    if (!order) {
+      console.warn('⚠️ Orden no encontrada para resetear:', orderId);
+      return null;
+    }
+
+    // Crear nueva orden limpia para la misma mesa
+    const newOrder = new Order(order.tableNumber, 'Orden reseteada');
+    
+    // Reemplazar orden anterior
+    this.orders.delete(orderId);
+    this.orders.set(newOrder.id, newOrder);
+    
+    // Actualizar mesa con nueva orden
+    const table = this.getTableByNumber(order.tableNumber);
+    if (table) {
+      table.currentOrder = newOrder;
+    }
+    
+    this.saveToStorage();
+    
+    console.log(`✅ Orden reseteada. Nueva orden: ${newOrder.id}`);
+    return newOrder;
+  }
+
+  // 🔥 CORRECCIÓN DEL MÉTODO openCashRegister - RESET COMPLETO
+  openCashRegister(openingCashCRC: number, openingCashUSD: number): void {
+    console.log('🏦 Abriendo caja registradora con RESET COMPLETO...', { openingCashCRC, openingCashUSD });
+    
+    // 🧹 PRIMERO: RESET COMPLETO DE DATOS DEL DÍA ANTERIOR
+    console.log('🧹 Limpiando datos del día anterior...');
+    
+    // 🗑️ LIMPIAR ÓRDENES DEL DÍA ANTERIOR
+    this.orders.clear();
+    console.log('✅ Órdenes del día anterior eliminadas');
+    
+    // 🗑️ LIMPIAR PAGOS DEL DÍA ANTERIOR  
+    this.payments = [];
+    console.log('✅ Pagos del día anterior eliminados');
+    
+    // 🗑️ LIMPIAR EXPENSES DEL DÍA ANTERIOR  
+    this.expenses.clear();
+    console.log('✅ Expenses del día anterior eliminados');
+    
+    // 🍽️ LIBERAR TODAS LAS MESAS (estado limpio)
+    this.tables.forEach(table => {
+      if (table.status !== 'available') {
+        table.free();
+      }
+    });
+    console.log('✅ Todas las mesas liberadas');
+
+    // 🔥 SEGUNDO: INICIALIZAR CAJA NUEVA CON DATOS EN CERO
+    this.cashRegister = {
+      // 🏦 ESTADO OPERATIVO
+      isOpen: true,
+      
+      // 💰 DINERO FÍSICO BASE (para vueltos) - INICIAL
+      openingCashCRC,
+      openingCashUSD,
+      currentCashCRC: openingCashCRC,     // Empieza igual al inicial
+      currentCashUSD: openingCashUSD,     // Empieza igual al inicial
+      
+      // 📊 VENTAS DEL DÍA - RESET COMPLETO A CERO
+      totalSalesCRC: 0,                   // 🔥 NUEVO DÍA = 0
+      totalSalesUSD: 0,                   // 🔥 NUEVO DÍA = 0
+      totalOrders: 0,                     // 🔥 NUEVO DÍA = 0
+      
+      // 💳 DESGLOSE DE PAGOS - RESET COMPLETO A CERO
+      cashPaymentsCRC: 0,                 // 🔥 NUEVO DÍA = 0
+      cashPaymentsUSD: 0,                 // 🔥 NUEVO DÍA = 0
+      cardPaymentsCRC: 0,                 // 🔥 NUEVO DÍA = 0
+      cardPaymentsUSD: 0,                 // 🔥 NUEVO DÍA = 0
+      
+      // 📅 TIMESTAMP NUEVO
+      openedAt: new Date()
+    };
+    
+    // 💾 GUARDAR ESTADO LIMPIO
+    this.saveToStorage();
+    
+    console.log('✅ Caja abierta con estado completamente limpio');
+    console.log('📊 Dashboard se mostrará con datos en cero');
+  }
 
   // 🔥 MÉTODO closeCashRegister CORREGIDO CON FECHAS EXACTAS
-closeCashRegister(): DailyRecord {
-  console.log('🔒 Cerrando caja registradora...');
-  
-  // 📊 CAPTURAR DATOS ANTES DE RESETEAR
-  const record: DailyRecord = {
-    id: `closure-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+  closeCashRegister(): DailyRecord {
+    console.log('🔒 Cerrando caja registradora...');
     
-    // 🔥 FECHA CORRECTA EN TIMEZONE COSTA RICA
-    date: getClosureDateString(), // YYYY-MM-DD en timezone correcto
-    
-    // 💰 DINERO FÍSICO (antes del reset)
-    openingCashCRC: this.cashRegister.openingCashCRC,
-    openingCashUSD: this.cashRegister.openingCashUSD,
-    closingCashCRC: this.cashRegister.currentCashCRC,
-    closingCashUSD: this.cashRegister.currentCashUSD,
-    
-    // 📊 VENTAS DEL DÍA (antes del reset) 
-    totalSalesCRC: this.cashRegister.totalSalesCRC,
-    totalSalesUSD: this.cashRegister.totalSalesUSD,
-    totalOrders: this.cashRegister.totalOrders,
-    averageOrderValue: this.cashRegister.totalOrders > 0 
-      ? this.cashRegister.totalSalesCRC / this.cashRegister.totalOrders 
-      : 0,
-    
-    // 💳 MÉTODOS DE PAGO (antes del reset)
-    cashPaymentsCRC: this.cashRegister.cashPaymentsCRC,
-    cashPaymentsUSD: this.cashRegister.cashPaymentsUSD,
-    cardPaymentsCRC: this.cashRegister.cardPaymentsCRC,
-    cardPaymentsUSD: this.cashRegister.cardPaymentsUSD,
-    
-    // 📅 TIMESTAMPS EN ISO STRING
-    openedAt: this.cashRegister.openedAt instanceof Date 
-      ? this.cashRegister.openedAt.toISOString() 
-      : (this.cashRegister.openedAt || new Date().toISOString()),
-    closedAt: new Date().toISOString()
-  };
+    // 📊 CAPTURAR DATOS ANTES DE RESETEAR
+    const record: DailyRecord = {
+      id: `closure-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      
+      // 🔥 FECHA CORRECTA EN TIMEZONE COSTA RICA
+      date: getClosureDateString(), // YYYY-MM-DD en timezone correcto
+      
+      // 💰 DINERO FÍSICO (antes del reset)
+      openingCashCRC: this.cashRegister.openingCashCRC,
+      openingCashUSD: this.cashRegister.openingCashUSD,
+      closingCashCRC: this.cashRegister.currentCashCRC,
+      closingCashUSD: this.cashRegister.currentCashUSD,
+      
+      // 📊 VENTAS DEL DÍA (antes del reset) 
+      totalSalesCRC: this.cashRegister.totalSalesCRC,
+      totalSalesUSD: this.cashRegister.totalSalesUSD,
+      totalOrders: this.cashRegister.totalOrders,
+      averageOrderValue: this.cashRegister.totalOrders > 0 
+        ? this.cashRegister.totalSalesCRC / this.cashRegister.totalOrders 
+        : 0,
+      
+      // 💳 MÉTODOS DE PAGO (antes del reset)
+      cashPaymentsCRC: this.cashRegister.cashPaymentsCRC,
+      cashPaymentsUSD: this.cashRegister.cashPaymentsUSD,
+      cardPaymentsCRC: this.cashRegister.cardPaymentsCRC,
+      cardPaymentsUSD: this.cashRegister.cardPaymentsUSD,
+      
+      // 📅 TIMESTAMPS EN ISO STRING
+      openedAt: this.cashRegister.openedAt instanceof Date 
+        ? this.cashRegister.openedAt.toISOString() 
+        : (this.cashRegister.openedAt || new Date().toISOString()),
+      closedAt: new Date().toISOString()
+    };
 
-  // 💾 GUARDAR EN HISTORIAL PRIMERO (con datos reales)
-  this.saveToClosure(record);
+    // 💾 GUARDAR EN HISTORIAL PRIMERO (con datos reales)
+    this.saveToClosure(record);
 
-  // 🧹 AHORA SÍ RESETEAR COMPLETAMENTE PARA PRÓXIMO DÍA
-  console.log('🧹 Reseteando completamente el sistema...');
-  
-  // 🔥 CAJA CERRADA Y DATOS RESETEADOS
-  this.cashRegister = {
-    // 🏦 ESTADO CERRADO
-    isOpen: false,
+    // 🧹 AHORA SÍ RESETEAR COMPLETAMENTE PARA PRÓXIMO DÍA
+    console.log('🧹 Reseteando completamente el sistema...');
     
-    // 💰 RESET COMPLETO DEL DINERO FÍSICO
-    openingCashCRC: 0,
-    openingCashUSD: 0,
-    currentCashCRC: 0,
-    currentCashUSD: 0,
-    
-    // 📊 RESET COMPLETO DE VENTAS
-    totalSalesCRC: 0,
-    totalSalesUSD: 0,
-    totalOrders: 0,
-    
-    // 💳 RESET COMPLETO DE PAGOS
-    cashPaymentsCRC: 0,
-    cashPaymentsUSD: 0,
-    cardPaymentsCRC: 0,
-    cardPaymentsUSD: 0,
-    
-    // 📅 TIMESTAMP DE CIERRE
-    closedAt: new Date()
-  };
+    // 🔥 CAJA CERRADA Y DATOS RESETEADOS
+    this.cashRegister = {
+      // 🏦 ESTADO CERRADO
+      isOpen: false,
+      
+      // 💰 RESET COMPLETO DEL DINERO FÍSICO
+      openingCashCRC: 0,
+      openingCashUSD: 0,
+      currentCashCRC: 0,
+      currentCashUSD: 0,
+      
+      // 📊 RESET COMPLETO DE VENTAS
+      totalSalesCRC: 0,
+      totalSalesUSD: 0,
+      totalOrders: 0,
+      
+      // 💳 RESET COMPLETO DE PAGOS
+      cashPaymentsCRC: 0,
+      cashPaymentsUSD: 0,
+      cardPaymentsCRC: 0,
+      cardPaymentsUSD: 0,
+      
+      // 📅 TIMESTAMP DE CIERRE
+      closedAt: new Date()
+    };
 
-  // 🗑️ LIMPIAR ÓRDENES Y MESAS
-  console.log('🗑️ Limpiando órdenes del día...');
-  this.orders.clear();
-  
-  console.log('🗑️ Limpiando pagos del día...');
-  this.payments = [];
-  
-  console.log('🗑️ Limpiando expenses del día...');
-  this.expenses.clear();
-  
-  console.log('🍽️ Liberando todas las mesas...');
-  this.tables.forEach(table => {
-    if (table.status !== 'available') {
-      table.free();
-    }
-  });
+    // 🗑️ LIMPIAR ÓRDENES Y MESAS
+    console.log('🗑️ Limpiando órdenes del día...');
+    this.orders.clear();
+    
+    console.log('🗑️ Limpiando pagos del día...');
+    this.payments = [];
+    
+    console.log('🗑️ Limpiando expenses del día...');
+    this.expenses.clear();
+    
+    console.log('🍽️ Liberando todas las mesas...');
+    this.tables.forEach(table => {
+      if (table.status !== 'available') {
+        table.free();
+      }
+    });
 
-  // 💾 GUARDAR ESTADO LIMPIO
-  this.saveToStorage();
-  
-  console.log('✅ Caja cerrada - Sistema completamente reseteado');
-  console.log('📊 Dashboard se mostrará como "Caja Cerrada"');
-  
-  return record;
-}
+    // 💾 GUARDAR ESTADO LIMPIO
+    this.saveToStorage();
+    
+    console.log('✅ Caja cerrada - Sistema completamente reseteado');
+    console.log('📊 Dashboard se mostrará como "Caja Cerrada"');
+    
+    return record;
+  }
 
   private getPaymentsByType(method: string, currency: Currency): number {
     return this.payments
@@ -577,157 +763,176 @@ closeCashRegister(): DailyRecord {
     }
   }
 
+  // 🔥 FUNCIÓN FALTANTE - COMPLETAR DESDE LA LÍNEA 766
   private serializeTables(): any[] {
-    return Array.from(this.tables.values()).map(t => 
-      typeof t.toJSON === 'function' ? t.toJSON() : t
-    );
+    return Array.from(this.tables.values()).map(table => ({
+      id: table.id,
+      number: table.number,
+      seats: table.seats,
+      status: table.status,
+      currentOrder: table.currentOrder ? {
+        id: table.currentOrder.id,
+        tableNumber: table.currentOrder.tableNumber,
+        items: table.currentOrder.items,
+        status: table.currentOrder.status,
+        subtotal: table.currentOrder.subtotal,
+        serviceCharge: table.currentOrder.serviceCharge,
+        total: table.currentOrder.total,
+        notes: table.currentOrder.notes,
+        createdAt: table.currentOrder.createdAt,
+        updatedAt: table.currentOrder.updatedAt
+      } : null
+    }));
   }
 
   private serializeOrders(): any[] {
-    return Array.from(this.orders.values()).map(order => {
-      if (typeof order.toJSON === 'function') {
-        return order.toJSON();
-      }
-      return order;
-    });
+    return Array.from(this.orders.values()).map(order => ({
+      id: order.id,
+      tableNumber: order.tableNumber,
+      items: order.items,
+      status: order.status,
+      subtotal: order.subtotal,
+      serviceCharge: order.serviceCharge,
+      total: order.total,
+      notes: order.notes,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt
+    }));
   }
 
   private serializeMenuItems(): any[] {
-    return Array.from(this.menuItems.values()).map(m => 
-      typeof m.toJSON === 'function' ? m.toJSON() : m
-    );
+    return Array.from(this.menuItems.values()).map(item => ({
+      id: item.id,
+      name: item.name,
+      description: item.description,
+      price: item.price,
+      category: item.category,
+      available: item.available,
+      image: item.image
+    }));
   }
 
   private serializeExpenses(): any[] {
-    return Array.from(this.expenses.values());
+    return Array.from(this.expenses.values()).map(expense => ({
+      id: expense.id,
+      description: expense.description,
+      amount: expense.amount,
+      currency: expense.currency,
+      category: expense.category,
+      type: expense.type,
+      date: expense.date,
+      notes: expense.notes
+    }));
   }
 
   private loadFromStorage(): void {
-    console.log('📂 Intentando cargar datos desde localStorage...');
-    
-    const data = loadFromStorage(STORAGE_KEYS.RESTAURANT_DATA, null);
-    
-    if (!data) {
-      console.log('📭 No hay datos guardados en localStorage - iniciando fresh');
-      return;
-    }
-
-    console.log('📋 Datos encontrados en localStorage:', {
-      tables: data.tables?.length || 0,
-      orders: data.orders?.length || 0,
-      menuItems: data.menuItems?.length || 0,
-      expenses: data.expenses?.length || 0,
-      cashRegisterOpen: data.cashRegister?.isOpen || false,
-      lastSaved: data.lastSaved || 'No timestamp'
-    });
-    
-    this.loadOrders(data.orders);
-    this.loadTables(data.tables);
-    this.loadMenuItems(data.menuItems);
-    this.loadCashRegister(data.cashRegister);
-    this.loadPayments(data.payments);
-    this.loadExpenses(data.expenses);
-    
-    this.verifyOrderReconnection();
-  }
-
-  private loadOrders(ordersData: any[]): void {
-    if (!ordersData) return;
-    
-    console.log('📝 Cargando órdenes...');
-    ordersData.forEach((orderData: any) => {
-      const order = Order.fromJSON(orderData);
-      this.orders.set(order.id, order);
-    });
-    console.log(`✅ Total órdenes cargadas: ${ordersData.length}`);
-  }
-
-  private loadTables(tablesData: any[]): void {
-    if (!tablesData) return;
-    
-    console.log('🍽️ Cargando mesas...');
-    tablesData.forEach((tableData: any) => {
-      const table = Table.fromJSON(tableData);
-      
-      // Reconnect order if exists
-      if (tableData.currentOrder) {
-        const order = this.orders.get(tableData.currentOrder.id);
-        if (order) {
-          table.currentOrder = order;
-        }
+    try {
+      const data = loadFromStorage(STORAGE_KEYS.RESTAURANT_DATA);
+      if (!data) {
+        console.log('📦 No hay datos guardados, usando configuración por defecto');
+        return;
       }
-      
-      this.tables.set(table.id, table);
-    });
-    console.log(`✅ Cargadas ${tablesData.length} mesas`);
-  }
 
-  private loadMenuItems(menuItemsData: any[]): void {
-    if (!menuItemsData) return;
-    
-    menuItemsData.forEach((itemData: any) => {
-      const item = MenuItem.fromJSON(itemData);
-      this.menuItems.set(item.id, item);
-    });
-    console.log(`✅ Cargados ${menuItemsData.length} items del menú`);
-  }
+      console.log('📦 Cargando datos guardados...');
 
-  private loadCashRegister(cashRegisterData: any): void {
-    if (cashRegisterData) {
-      this.cashRegister = cashRegisterData;
-      console.log('✅ Estado de caja cargado:', cashRegisterData.isOpen ? 'Abierta' : 'Cerrada');
-    }
-  }
-
-  private loadPayments(paymentsData: any[]): void {
-    if (paymentsData) {
-      this.payments = paymentsData;
-      console.log(`✅ Cargados ${paymentsData.length} pagos`);
-    }
-  }
-
-  private loadExpenses(expensesData: any[]): void {
-    if (expensesData) {
-      expensesData.forEach((expenseData: any) => {
-        this.expenses.set(expenseData.id, expenseData);
-      });
-      console.log(`✅ Cargados ${expensesData.length} expenses`);
-    }
-  }
-
-  private verifyOrderReconnection(): void {
-    console.log('🔍 Verificación final de reconexión:');
-    this.tables.forEach(table => {
-      if (table.status === 'occupied' && table.currentOrder) {
-        console.log(`✅ Mesa ${table.number}: ${table.currentOrder.items.length} items, Total: ₡${table.currentOrder.total}`);
-      } else if (table.status === 'occupied' && !table.currentOrder) {
-        console.error(`❌ Mesa ${table.number} está ocupada pero NO tiene orden!`);
+      // Cargar mesas
+      if (data.tables) {
+        this.tables.clear();
+        data.tables.forEach((tableData: any) => {
+          const table = new Table(tableData.number, tableData.seats);
+          table.id = tableData.id;
+          table.status = tableData.status;
+          
+          if (tableData.currentOrder) {
+            const order = new Order(
+              tableData.currentOrder.tableNumber,
+              tableData.currentOrder.notes
+            );
+            Object.assign(order, tableData.currentOrder);
+            table.currentOrder = order;
+          }
+          
+          this.tables.set(table.id, table);
+        });
       }
-    });
+
+      // Cargar órdenes
+      if (data.orders) {
+        this.orders.clear();
+        data.orders.forEach((orderData: any) => {
+          const order = new Order(orderData.tableNumber, orderData.notes);
+          Object.assign(order, orderData);
+          this.orders.set(order.id, order);
+        });
+      }
+
+      // Cargar items del menú
+      if (data.menuItems) {
+        this.menuItems.clear();
+        data.menuItems.forEach((itemData: any) => {
+          const menuItem = new MenuItem(itemData);
+          this.menuItems.set(menuItem.id, menuItem);
+        });
+      }
+
+      // Cargar caja registradora
+      if (data.cashRegister) {
+        this.cashRegister = { ...this.cashRegister, ...data.cashRegister };
+      }
+
+      // Cargar pagos
+      if (data.payments) {
+        this.payments = data.payments;
+      }
+
+      // Cargar expenses
+      if (data.expenses) {
+        this.expenses.clear();
+        data.expenses.forEach((expenseData: any) => {
+          this.expenses.set(expenseData.id, expenseData);
+        });
+      }
+
+      console.log('✅ Datos cargados exitosamente');
+      
+    } catch (error) {
+      console.error('🚨 Error cargando datos:', error);
+    }
   }
 
-  // GETTERS PARA ESTADÍSTICAS
+  // MÉTODOS PÚBLICOS PARA EL HOOK
   getCashRegister(): CashRegister {
-    return { ...this.cashRegister };
+    return this.cashRegister;
   }
 
-  getAvailableTables(): Table[] {
-    return this.getTables().filter(table => table.isAvailable());
-  }
-
-  getOccupiedTables(): Table[] {
-    return this.getTables().filter(table => table.isOccupied());
+  getPayments(): Payment[] {
+    return this.payments;
   }
 
   getTodaysOrders(): Order[] {
-    const today = new Date().toDateString();
-    return Array.from(this.orders.values()).filter(
-      order => order.createdAt.toDateString() === today
-    );
+    const today = getClosureDateString();
+    return Array.from(this.orders.values()).filter(order => {
+      const orderDate = order.createdAt instanceof Date 
+        ? getClosureDateString(order.createdAt)
+        : today;
+      return orderDate === today;
+    });
   }
 
-  getCategories(): string[] {
-    const categories = new Set(this.getMenuItems().map(item => item.category));
-    return Array.from(categories).sort();
+  getClosureHistory(): DailyRecord[] {
+    try {
+      const history = JSON.parse(localStorage.getItem('fischer_closure_history') || '[]');
+      return history.sort((a: any, b: any) => 
+        new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+    } catch (error) {
+      console.error('Error loading closure history:', error);
+      return [];
+    }
+  }
+
+  refreshData(): void {
+    console.log('🔄 Refrescando datos...');
+    this.loadFromStorage();
   }
 }
