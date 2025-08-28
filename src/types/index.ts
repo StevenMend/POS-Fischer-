@@ -214,3 +214,42 @@ export interface FinancialStats {
     message: string;
   }>;
 }
+// BLUETOOTH PRINTER SYSTEM
+export interface BluetoothPrinter {
+  id: string;
+  name: string;
+  connected: boolean;
+  device?: BluetoothDevice;
+  characteristic?: BluetoothRemoteGATTCharacteristic;
+  rssi?: number;
+  lastSeen?: Date;
+  model?: string;
+}
+
+export interface CompanyInfo {
+  name: string;
+  address: string;
+  phone: string;
+  email?: string;
+  taxId: string;
+  website?: string;
+  logoBase64?: string;
+}
+
+export interface PrinterSettings {
+  paperWidth: number;
+  fontSize: 'small' | 'normal' | 'large';
+  density: number;
+  cutPaper: boolean;
+  cashDrawer: boolean;
+  encoding: 'utf8' | 'latin1';
+}
+
+export interface ReceiptData {
+  company: CompanyInfo;
+  order: Order;
+  payment: Payment;
+  receiptNumber: string;
+  timestamp: Date;
+  settings: PrinterSettings;
+}
