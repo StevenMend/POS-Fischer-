@@ -30,6 +30,7 @@ const PrinterManager: React.FC<PrinterManagerProps> = ({ isOpen, onClose }) => {
     scanForPrinters,
     connectToPrinter,
     disconnectPrinter,
+    printReceipt,
     clearError
   } = usePrinter();
 
@@ -97,11 +98,11 @@ const PrinterManager: React.FC<PrinterManagerProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  // Función para probar impresión
+  // Función para probar impresión - AHORA IMPRIME REALMENTE
   const handleTestPrint = async (printerId: string) => {
     console.log(`🧪 [PrinterManager] Usuario solicitó prueba de impresión: ${printerId}`);
     
-    // Datos de prueba
+    // Datos de prueba para recibo real
     const testReceiptData = {
       company: {
         name: 'Soda Fischer',
@@ -152,9 +153,21 @@ const PrinterManager: React.FC<PrinterManagerProps> = ({ isOpen, onClose }) => {
       items: testReceiptData.order.items.length
     });
 
-    // Esta función necesitaría ser importada del hook
-    // const success = await printReceipt(printerId, testReceiptData);
-    console.log('🧪 [PrinterManager] Prueba de impresión completada (simulada)');
+    try {
+      console.log('🖨️ [PrinterManager] Ejecutando impresión REAL...');
+      const success = await printReceipt(printerId, testReceiptData);
+      
+      if (success) {
+        console.log('🎉 [PrinterManager] ¡Prueba de impresión EXITOSA!');
+        alert('✅ Recibo de prueba enviado a la impresora!');
+      } else {
+        console.error('❌ [PrinterManager] Prueba de impresión FALLÓ');
+        alert('❌ Error en la prueba de impresión. Revisa la consola.');
+      }
+    } catch (error: any) {
+      console.error('💥 [PrinterManager] Error ejecutando prueba:', error);
+      alert(`💥 Error: ${error.message}`);
+    }
   };
 
   if (!isOpen) return null;

@@ -440,6 +440,11 @@ export const usePrinter = () => {
     
     console.log(`📤 [PRINTER] Comandos MPR-300: ${commandsArray.length} bytes`);
     console.log(`📏 [PRINTER] Optimizado para 32 chars/línea @ 72mm`);
+    
+    // 🔍 DEBUG: Preview del recibo generado
+    console.log('📄 [DEBUG] Preview del recibo (primeros 200 chars):');
+    console.log(commands.substring(0, 200).replace(/\x1B/g, '[ESC]').replace(/\x1D/g, '[GS]').replace(/\x0A/g, '[LF]\n'));
+    
     return commandsArray;
   }, []);
 
@@ -469,16 +474,40 @@ export const usePrinter = () => {
       console.log(`   Tamaño: ${commands.length} bytes`);
       console.log(`   Primeros 50 bytes:`, Array.from(commands.slice(0, 50)).map(b => `0x${b.toString(16).padStart(2, '0')}`).join(' '));
       
-      // Enviar comandos por chunks para mayor compatibilidad
-      const CHUNK_SIZE = 20; // MTU típico para BLE
+      // 🔍 DEBUG: Información de la característica
+      console.log('🔌 [DEBUG] Printer characteristic details:', {
+        uuid: printer.characteristic.uuid,
+        writeWithoutResponse: printer.characteristic.properties.writeWithoutResponse,
+        write: printer.characteristic.properties.write,
+        notify: printer.characteristic.properties.notify
+      });
+      
+      // Enviar comandos por chunks MUY PEQUEÑOS para MPR-300
+      const CHUNK_SIZE = 1; // 1 byte a la vez para máxima compatibilidad
+      console.log(`🔧 [PRINTER] Usando chunks de ${CHUNK_SIZE} byte(s) para MPR-300`);
+      
       for (let i = 0; i < commands.length; i += CHUNK_SIZE) {
         const chunk = commands.slice(i, i + CHUNK_SIZE);
-        console.log(`📦 [PRINTER] Enviando chunk ${Math.floor(i/CHUNK_SIZE) + 1}/${Math.ceil(commands.length/CHUNK_SIZE)} (${chunk.length} bytes)`);
+        const chunkNum = Math.floor(i/CHUNK_SIZE) + 1;
+        const totalChunks = Math.ceil(commands.length/CHUNK_SIZE);
         
-        await printer.characteristic.writeValue(chunk);
+        console.log(`📦 [PRINTER] Enviando chunk ${chunkNum}/${totalChunks}: byte ${i} = 0x${chunk[0].toString(16).padStart(2, '0')} (${String.fromCharCode(chunk[0]) || 'control'})`);
         
-        // Pequeña pausa entre chunks
-        await new Promise(resolve => setTimeout(resolve, 50));
+        try {
+          await printer.characteristic.writeValue(chunk);
+          console.log(`✅ [PRINTER] Chunk ${chunkNum} enviado exitosamente`);
+        } catch (chunkError: any) {
+          console.error(`❌ [PRINTER] Error enviando chunk ${chunkNum}:`, chunkError);
+          throw chunkError;
+        }
+        
+        // Pausa más larga entre chunks para MPR-300
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Log de progreso cada 50 bytes
+        if (i > 0 && i % 50 === 0) {
+          console.log(`📊 [PRINTER] Progreso: ${i}/${commands.length} bytes (${Math.round(i/commands.length*100)}%)`);
+        }
       }
       
       console.log('🎉 [PRINTER] Impresión enviada exitosamente!');
