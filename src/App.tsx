@@ -661,7 +661,7 @@ const App: React.FC = () => {
   );
 };
 
-export default App;efqwgrty0p-[=?0≥ª\{P?., }]
+export default App;
 
 
 
