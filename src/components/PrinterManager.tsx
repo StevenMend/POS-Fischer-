@@ -13,7 +13,7 @@ import {
   Battery,
   Signal
 } from 'lucide-react';
-import { usePrinter } from '../hooks/usePrinter';
+import { usePrinter } from '../contexts/PrinterContext';
 
 interface PrinterManagerProps {
   isOpen: boolean;

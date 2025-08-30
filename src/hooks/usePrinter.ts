@@ -252,6 +252,25 @@ export const usePrinter = () => {
     );
   }, [connectedPrinters]);
 
+  // Función para limpiar caracteres problemáticos para MPR-300
+  const cleanTextForPrinter = useCallback((text: string): string => {
+    return text
+      .replace(/₡/g, 'C')           // Colón símbolo → C
+      .replace(/á/g, 'a')           // á → a
+      .replace(/é/g, 'e')           // é → e  
+      .replace(/í/g, 'i')           // í → i
+      .replace(/ó/g, 'o')           // ó → o
+      .replace(/ú/g, 'u')           // ú → u
+      .replace(/ñ/g, 'n')           // ñ → n
+      .replace(/Á/g, 'A')           // Á → A
+      .replace(/É/g, 'E')           // É → E
+      .replace(/Í/g, 'I')           // Í → I
+      .replace(/Ó/g, 'O')           // Ó → O
+      .replace(/Ú/g, 'U')           // Ú → U
+      .replace(/Ñ/g, 'N')           // Ñ → N
+      .replace(/[^\x00-\x7F]/g, '?'); // Otros caracteres no ASCII → ?
+  }, []);
+
   // Generar comandos ESC/POS para recibo con formato MPR-300
   const generateReceiptCommands = useCallback((receiptData: ReceiptData): Uint8Array => {
     console.log('📝 [PRINTER] Generando comandos ESC/POS para MPR-300...');
@@ -270,19 +289,19 @@ export const usePrinter = () => {
     commands += ESC_POS.ALIGN_CENTER;
     commands += ESC_POS.BOLD_ON;
     commands += ESC_POS.DOUBLE_HEIGHT;
-    commands += `${company.name.substring(0, 16)}\n`; // Max 16 chars para doble altura
+    commands += `${cleanTextForPrinter(company.name).substring(0, 16)}\n`; // Max 16 chars para doble altura
     commands += ESC_POS.NORMAL_SIZE;
     commands += ESC_POS.BOLD_OFF;
     
     // Dirección ajustada a 32 chars
-    const addressLines = company.address.match(/.{1,32}/g) || [company.address];
+    const addressLines = cleanTextForPrinter(company.address).match(/.{1,32}/g) || [company.address];
     addressLines.forEach(line => {
       commands += `${line.trim()}\n`;
     });
     
-    if (company.phone) commands += `Tel: ${company.phone}\n`;
-    if (company.email && company.email.length <= 32) commands += `${company.email}\n`;
-    if (company.taxId) commands += `Ced: ${company.taxId}\n`;
+    if (company.phone) commands += `Tel: ${cleanTextForPrinter(company.phone)}\n`;
+    if (company.email && company.email.length <= 32) commands += `${cleanTextForPrinter(company.email)}\n`;
+    if (company.taxId) commands += `Ced: ${cleanTextForPrinter(company.taxId)}\n`;
     
     commands += ESC_POS.LINE_FEED;
 
@@ -321,16 +340,17 @@ export const usePrinter = () => {
       const price = item.product?.price || item.menuItem?.price || 0;
       const subtotal = item.subtotal;
 
-      console.log(`   ${index + 1}. ${name} x${qty} = ₡${subtotal}`);
+      console.log(`   ${index + 1}. ${name} x${qty} = C${subtotal}`);
       
-      // Nombre producto - máximo 32 chars
-      const productName = name.length > 32 ? name.substring(0, 32) : name;
-      commands += `${productName}\n`;
+      // Nombre producto - máximo 32 chars y limpiado
+      const productName = cleanTextForPrinter(name);
+      const displayName = productName.length > 32 ? productName.substring(0, 32) : productName;
+      commands += `${displayName}\n`;
       
       // Línea de cantidad y precio - formato exacto 32 chars
       const qtyText = `  ${qty} x `;
-      const priceText = `₡${price.toLocaleString('es-CR')}`;
-      const subtotalText = `₡${subtotal.toLocaleString('es-CR')}`;
+      const priceText = `C${price.toLocaleString('es-CR')}`;
+      const subtotalText = `C${subtotal.toLocaleString('es-CR')}`;
       
       // Calcular espacios para alineación exacta a 32 chars
       const usedChars = qtyText.length + priceText.length + subtotalText.length;
@@ -340,7 +360,8 @@ export const usePrinter = () => {
       
       // Notas si las hay
       if (item.notes && item.notes.length > 0) {
-        const notesLine = `  ${item.notes}`;
+        const cleanNotes = cleanTextForPrinter(item.notes);
+        const notesLine = `  ${cleanNotes}`;
         commands += notesLine.substring(0, 32) + '\n';
       }
     });
@@ -352,13 +373,13 @@ export const usePrinter = () => {
     
     // Subtotal
     const subtotalLabel = 'Subtotal:';
-    const subtotalAmount = `₡${order.subtotal?.toLocaleString('es-CR') || '0'}`;
+    const subtotalAmount = `C${order.subtotal?.toLocaleString('es-CR') || '0'}`;
     const subtotalSpaces = 32 - subtotalLabel.length - subtotalAmount.length;
     commands += subtotalLabel + ' '.repeat(Math.max(1, subtotalSpaces)) + subtotalAmount + '\n';
     
     // Servicio
     const serviceLabel = 'Servicio (10%):';
-    const serviceAmount = `₡${order.serviceCharge?.toLocaleString('es-CR') || '0'}`;
+    const serviceAmount = `C${order.serviceCharge?.toLocaleString('es-CR') || '0'}`;
     const serviceSpaces = 32 - serviceLabel.length - serviceAmount.length;
     commands += serviceLabel + ' '.repeat(Math.max(1, serviceSpaces)) + serviceAmount + '\n';
     
@@ -366,7 +387,7 @@ export const usePrinter = () => {
     
     // Total
     const totalLabel = 'TOTAL:';
-    const totalAmount = `₡${order.total?.toLocaleString('es-CR') || '0'}`;
+    const totalAmount = `C${order.total?.toLocaleString('es-CR') || '0'}`;
     const totalSpaces = 32 - totalLabel.length - totalAmount.length;
     commands += ESC_POS.BOLD_ON;
     commands += totalLabel + ' '.repeat(Math.max(1, totalSpaces)) + totalAmount + '\n';
@@ -384,7 +405,7 @@ export const usePrinter = () => {
     commands += '-'.repeat(32) + '\n';
     
     const methodText = payment.method === 'cash' ? 'Efectivo' : 'Tarjeta';
-    const currencySymbol = payment.currency === 'USD' ? '$' : '₡';
+    const currencySymbol = payment.currency === 'USD' ? '$' : 'C'; // FIXED: Completed the ternary operator
     
     commands += `Metodo: ${methodText} (${payment.currency})\n`;
     
@@ -433,20 +454,23 @@ export const usePrinter = () => {
       commands += ESC_POS.CASH_DRAWER;
     }
 
-    const commandsArray = new Uint8Array(commands.length);
-    for (let i = 0; i < commands.length; i++) {
-      commandsArray[i] = commands.charCodeAt(i);
+    // ENCODING OPTIMIZADO: Limpiar todo el string antes de convertir a bytes
+    const cleanCommands = cleanTextForPrinter(commands);
+    const commandsArray = new Uint8Array(cleanCommands.length);
+    for (let i = 0; i < cleanCommands.length; i++) {
+      commandsArray[i] = cleanCommands.charCodeAt(i);
     }
     
     console.log(`📤 [PRINTER] Comandos MPR-300: ${commandsArray.length} bytes`);
     console.log(`📏 [PRINTER] Optimizado para 32 chars/línea @ 72mm`);
+    console.log(`🔧 [PRINTER] Encoding limpiado - ₡ → C, acentos removidos`);
     
-    // 🔍 DEBUG: Preview del recibo generado
+    // DEBUG: Preview del recibo generado
     console.log('📄 [DEBUG] Preview del recibo (primeros 200 chars):');
-    console.log(commands.substring(0, 200).replace(/\x1B/g, '[ESC]').replace(/\x1D/g, '[GS]').replace(/\x0A/g, '[LF]\n'));
+    console.log(cleanCommands.substring(0, 200).replace(/\x1B/g, '[ESC]').replace(/\x1D/g, '[GS]').replace(/\x0A/g, '[LF]\n'));
     
     return commandsArray;
-  }, []);
+  }, [cleanTextForPrinter]);
 
   // Imprimir recibo
   const printReceipt = useCallback(async (
@@ -474,7 +498,7 @@ export const usePrinter = () => {
       console.log(`   Tamaño: ${commands.length} bytes`);
       console.log(`   Primeros 50 bytes:`, Array.from(commands.slice(0, 50)).map(b => `0x${b.toString(16).padStart(2, '0')}`).join(' '));
       
-      // 🔍 DEBUG: Información de la característica
+      // DEBUG: Información de la característica
       console.log('🔌 [DEBUG] Printer characteristic details:', {
         uuid: printer.characteristic.uuid,
         writeWithoutResponse: printer.characteristic.properties.writeWithoutResponse,
@@ -482,16 +506,16 @@ export const usePrinter = () => {
         notify: printer.characteristic.properties.notify
       });
       
-      // Enviar comandos por chunks MUY PEQUEÑOS para MPR-300
-      const CHUNK_SIZE = 1; // 1 byte a la vez para máxima compatibilidad
-      console.log(`🔧 [PRINTER] Usando chunks de ${CHUNK_SIZE} byte(s) para MPR-300`);
+      // Enviar comandos por chunks optimizados para MPR-300
+      const CHUNK_SIZE = 20; // 20 bytes - balance entre velocidad y compatibilidad
+      console.log(`🔧 [PRINTER] Usando chunks de ${CHUNK_SIZE} bytes para MPR-300`);
       
       for (let i = 0; i < commands.length; i += CHUNK_SIZE) {
         const chunk = commands.slice(i, i + CHUNK_SIZE);
         const chunkNum = Math.floor(i/CHUNK_SIZE) + 1;
         const totalChunks = Math.ceil(commands.length/CHUNK_SIZE);
         
-        console.log(`📦 [PRINTER] Enviando chunk ${chunkNum}/${totalChunks}: byte ${i} = 0x${chunk[0].toString(16).padStart(2, '0')} (${String.fromCharCode(chunk[0]) || 'control'})`);
+        console.log(`📦 [PRINTER] Enviando chunk ${chunkNum}/${totalChunks}: bytes ${i}-${i+chunk.length-1} (${chunk.length} bytes)`);
         
         try {
           await printer.characteristic.writeValue(chunk);
@@ -501,11 +525,11 @@ export const usePrinter = () => {
           throw chunkError;
         }
         
-        // Pausa más larga entre chunks para MPR-300
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Pausa corta entre chunks para MPR-300
+        await new Promise(resolve => setTimeout(resolve, 10));
         
-        // Log de progreso cada 50 bytes
-        if (i > 0 && i % 50 === 0) {
+        // Log de progreso cada 10 chunks
+        if (chunkNum > 0 && chunkNum % 10 === 0) {
           console.log(`📊 [PRINTER] Progreso: ${i}/${commands.length} bytes (${Math.round(i/commands.length*100)}%)`);
         }
       }
