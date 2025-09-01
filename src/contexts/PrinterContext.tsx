@@ -1,50 +1,61 @@
-// contexts/PrinterContext.tsx
+// contexts/PrinterContext.tsx - VERSIÓN CORREGIDA PROFESIONAL
 import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { BluetoothPrinter, CompanyInfo, ReceiptData, PrinterSettings } from '../types';
 
-// ESC/POS Commands optimizados para MPR-300
-const ESC_POS = {
-  ESC: '\x1B',
-  GS: '\x1D',
+// COMANDOS ESC/POS OPTIMIZADOS PARA MPR-300
+const ESC_POS_COMMANDS = {
   INIT: '\x1B\x40',
+  LF: '\x0A',
   ALIGN_LEFT: '\x1B\x61\x00',
   ALIGN_CENTER: '\x1B\x61\x01',
-  ALIGN_RIGHT: '\x1B\x61\x02',
   BOLD_ON: '\x1B\x45\x01',
   BOLD_OFF: '\x1B\x45\x00',
-  DOUBLE_HEIGHT: '\x1B\x21\x10',
-  NORMAL_SIZE: '\x1B\x21\x00',
-  FONT_A: '\x1B\x4D\x00',
-  LINE_FEED: '\x0A',
-  PAPER_CUT: '\x1D\x56\x00',
-  CASH_DRAWER: '\x1B\x70\x00\x19\x19',
-  DENSITY: (level: number) => `\x1D\x7C${String.fromCharCode(level)}`,
-};
+  CUT: '\x1D\x56\x00',
+  DENSITY: (level: number) => `\x1D\x7C${String.fromCharCode(Math.max(1, Math.min(5, level)))}`,
+} as const;
 
+// CONFIGURACIÓN BLUETOOTH
+const BLUETOOTH_CONFIG = {
+  SCAN_TIMEOUT: 30000,
+  CONNECTION_TIMEOUT: 15000,
+  CHUNK_SIZE: 20,
+  CHUNK_DELAY: 10,
+  MAX_RETRIES: 3,
+  SERVICES: [
+    '000018f0-0000-1000-8000-00805f9b34fb', // Serial port service
+    '00001101-0000-1000-8000-00805f9b34fb', // SPP
+    '49535343-fe7d-4ae5-8fa9-9fafd205e455', // Custom service
+  ]
+} as const;
+
+// STORAGE KEYS
+const STORAGE_KEYS = {
+  PRINTERS: 'fischer_bluetooth_printers',
+  RECEIPT_COUNTER: 'fischer_receipt_counter',
+} as const;
+
+// INTERFACES
 interface PrinterContextType {
-  // Estado
   connectedPrinters: BluetoothPrinter[];
   isScanning: boolean;
   isPrinting: boolean;
   lastError: string | null;
-  
-  // Funciones principales
   checkBluetoothSupport: () => boolean;
   scanForPrinters: () => Promise<BluetoothPrinter[]>;
   connectToPrinter: (printerId: string) => Promise<boolean>;
   disconnectPrinter: (printerId: string) => Promise<void>;
   printReceipt: (printerId: string, receiptData: ReceiptData) => Promise<boolean>;
   createReceiptData: (order: any, payment: any, table: any, companyInfo?: CompanyInfo) => ReceiptData;
-  
-  // Utilidades
   clearError: () => void;
   getDefaultPrinter: () => BluetoothPrinter | null;
   printWithDefaultPrinter: (receiptData: ReceiptData) => Promise<boolean>;
+  resetAllPrinters: () => void;
 }
 
+// CONTEXTO
 const PrinterContext = createContext<PrinterContextType | undefined>(undefined);
 
-// Configuración optimizada MPR-300
+// CONFIGURACIÓN POR DEFECTO
 const defaultSettings: PrinterSettings = {
   paperWidth: 72,
   fontSize: 'normal',
@@ -54,113 +65,177 @@ const defaultSettings: PrinterSettings = {
   encoding: 'utf8'
 };
 
-// Clave para persistencia
-const PRINTER_STORAGE_KEY = 'fischer_printer_connections';
-
+// PROVIDER COMPONENT
 export const PrinterProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // ESTADO PRINCIPAL
   const [connectedPrinters, setConnectedPrinters] = useState<BluetoothPrinter[]>([]);
   const [isScanning, setIsScanning] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
+
+  // REFERENCIAS PARA LIMPIEZA
+  const activeConnections = useRef<Map<string, BluetoothDevice>>(new Map());
+  const disconnectListeners = useRef<Map<string, () => void>>(new Map());
+  const abortController = useRef<AbortController | null>(null);
+
+  // ===== UTILIDADES DE PERSISTENCIA =====
   
-  const scanTimeoutRef = useRef<NodeJS.Timeout>();
-
-  // PERSISTENCIA: Cargar conexiones guardadas al iniciar
-  useEffect(() => {
-    const loadSavedPrinters = () => {
-      try {
-        const saved = localStorage.getItem(PRINTER_STORAGE_KEY);
-        if (saved) {
-          const printers = JSON.parse(saved);
-          console.log('📂 [PRINTER_CONTEXT] Cargando impresoras guardadas:', printers.length);
-          setConnectedPrinters(printers.map((p: any) => ({
-            ...p,
-            device: undefined, // No podemos serializar BluetoothDevice
-            characteristic: undefined,
-            connected: false // Requiere reconexión manual
-          })));
-        }
-      } catch (error) {
-        console.error('❌ [PRINTER_CONTEXT] Error cargando impresoras:', error);
-      }
-    };
-
-    loadSavedPrinters();
+  const savePrintersToStorage = useCallback((printers: BluetoothPrinter[]) => {
+    try {
+      // SOLO SERIALIZAR DATOS SEGUROS - SIN DEVICE/CHARACTERISTIC
+      const serializablePrinters = printers.map(printer => ({
+        id: printer.id,
+        name: printer.name,
+        model: printer.model,
+        rssi: printer.rssi,
+        lastSeen: printer.lastSeen ? printer.lastSeen.toISOString() : null,
+        connected: false // SIEMPRE FALSE EN STORAGE
+      }));
+      
+      localStorage.setItem(STORAGE_KEYS.PRINTERS, JSON.stringify(serializablePrinters));
+      console.log('💾 [PRINTER] Impresoras guardadas:', serializablePrinters.length);
+    } catch (error) {
+      console.error('❌ [PRINTER] Error guardando impresoras:', error);
+    }
   }, []);
 
-  // PERSISTENCIA: Guardar cambios en connectedPrinters
-  useEffect(() => {
-    if (connectedPrinters.length > 0) {
+  const loadPrintersFromStorage = useCallback((): BluetoothPrinter[] => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.PRINTERS);
+      if (!stored) return [];
+
+      const printers = JSON.parse(stored);
+      return printers.map((printer: any) => ({
+        ...printer,
+        lastSeen: printer.lastSeen ? new Date(printer.lastSeen) : new Date(),
+        connected: false, // NUNCA CONECTADAS AL CARGAR
+        device: undefined,
+        characteristic: undefined
+      }));
+    } catch (error) {
+      console.error('❌ [PRINTER] Error cargando impresoras:', error);
+      return [];
+    }
+  }, []);
+
+  // ===== LIMPIEZA Y MANTENIMIENTO =====
+
+  const cleanupPrinter = useCallback((printerId: string) => {
+    console.log(`🧹 [PRINTER] Limpiando impresora: ${printerId}`);
+    
+    // Remover device activo
+    const device = activeConnections.current.get(printerId);
+    if (device?.gatt?.connected) {
       try {
-        // Solo guardar datos serializables
-        const serializable = connectedPrinters.map(p => ({
-          id: p.id,
-          name: p.name,
-          model: p.model,
-          lastSeen: p.lastSeen,
-          connected: p.connected
-        }));
-        localStorage.setItem(PRINTER_STORAGE_KEY, JSON.stringify(serializable));
-        console.log('💾 [PRINTER_CONTEXT] Estado de impresoras guardado');
+        device.gatt.disconnect();
       } catch (error) {
-        console.error('❌ [PRINTER_CONTEXT] Error guardando estado:', error);
+        console.warn('⚠️ [PRINTER] Error desconectando device:', error);
       }
     }
-  }, [connectedPrinters]);
+    activeConnections.current.delete(printerId);
 
-  // Función de limpieza optimizada para MPR-300
-  const cleanTextForPrinter = useCallback((text: string): string => {
-    return text
-      .replace(/₡/g, 'C')
-      .replace(/[áàäâ]/g, 'a')
-      .replace(/[éèëê]/g, 'e')
-      .replace(/[íìïî]/g, 'i')
-      .replace(/[óòöô]/g, 'o')
-      .replace(/[úùüû]/g, 'u')
-      .replace(/ñ/g, 'n')
-      .replace(/[ÁÀÄÂ]/g, 'A')
-      .replace(/[ÉÈËÊ]/g, 'E')
-      .replace(/[ÍÌÏÎ]/g, 'I')
-      .replace(/[ÓÒÖÔ]/g, 'O')
-      .replace(/[ÚÙÜÛ]/g, 'U')
-      .replace(/Ñ/g, 'N')
-      .replace(/[^\x00-\x7F]/g, '?');
+    // Remover listener de desconexión
+    const listener = disconnectListeners.current.get(printerId);
+    if (listener) {
+      listener(); // Ejecutar cleanup del listener
+      disconnectListeners.current.delete(printerId);
+    }
+
+    // Actualizar estado
+    setConnectedPrinters(prev => 
+      prev.map(p => p.id === printerId ? {
+        ...p,
+        connected: false,
+        device: undefined,
+        characteristic: undefined
+      } : p)
+    );
   }, []);
 
-  // Verificar soporte Bluetooth
+  const cleanupAllPrinters = useCallback(() => {
+    console.log('🧹 [PRINTER] Limpieza completa de impresoras');
+    
+    // Limpiar todas las conexiones activas
+    activeConnections.current.forEach((device, printerId) => {
+      cleanupPrinter(printerId);
+    });
+
+    // Cancelar escaneo si está activo
+    if (abortController.current) {
+      abortController.current.abort();
+      abortController.current = null;
+    }
+
+    setIsScanning(false);
+    setIsPrinting(false);
+  }, [cleanupPrinter]);
+
+  // ===== GESTIÓN DE DISPOSITIVOS DUPLICADOS =====
+
+  const mergePrinter = useCallback((existingPrinters: BluetoothPrinter[], newPrinter: BluetoothPrinter): BluetoothPrinter[] => {
+    const existingIndex = existingPrinters.findIndex(p => 
+      p.id === newPrinter.id || 
+      (p.name === newPrinter.name && p.name !== 'Dispositivo Desconocido')
+    );
+
+    if (existingIndex >= 0) {
+      // ACTUALIZAR EXISTENTE
+      return existingPrinters.map((p, index) => 
+        index === existingIndex ? {
+          ...p,
+          ...newPrinter,
+          lastSeen: new Date(),
+          // MANTENER ESTADO DE CONEXIÓN EXISTENTE SI YA ESTÁ CONECTADO
+          connected: p.connected || newPrinter.connected,
+          device: newPrinter.device || p.device,
+          characteristic: newPrinter.characteristic || p.characteristic
+        } : p
+      );
+    } else {
+      // AGREGAR NUEVO
+      return [...existingPrinters, { ...newPrinter, lastSeen: new Date() }];
+    }
+  }, []);
+
+  // ===== CORE FUNCTIONS =====
+
   const checkBluetoothSupport = useCallback((): boolean => {
     if (!navigator.bluetooth) {
-      const error = 'Web Bluetooth API no soportada en este navegador';
-      console.error('❌ [PRINTER_CONTEXT]', error);
-      setLastError(error);
+      setLastError('Web Bluetooth API no está disponible en este navegador');
       return false;
     }
     return true;
   }, []);
 
-  // Escanear impresoras
   const scanForPrinters = useCallback(async (): Promise<BluetoothPrinter[]> => {
-    console.log('📡 [PRINTER_CONTEXT] Escaneando impresoras...');
+    console.log('🔍 [PRINTER] Iniciando escaneo profesional...');
     
     if (!checkBluetoothSupport()) return [];
-
+    
+    // Cancelar escaneo previo
+    if (abortController.current) {
+      abortController.current.abort();
+    }
+    
+    abortController.current = new AbortController();
     setIsScanning(true);
     setLastError(null);
 
     try {
-      const options = {
-        acceptAllDevices: true,
-        optionalServices: [
-          '000018f0-0000-1000-8000-00805f9b34fb',
-          '00001101-0000-1000-8000-00805f9b34fb',
-          '49535343-fe7d-4ae5-8fa9-9fafd205e455',
-        ]
-      };
+      const device = await Promise.race([
+        navigator.bluetooth.requestDevice({
+          acceptAllDevices: true,
+          optionalServices: BLUETOOTH_CONFIG.SERVICES
+        }),
+        new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout de escaneo')), BLUETOOTH_CONFIG.SCAN_TIMEOUT)
+        )
+      ]);
 
-      const device = await navigator.bluetooth.requestDevice(options);
-      
-      if (device) {
-        const printer: BluetoothPrinter = {
+      if (device && !abortController.current.signal.aborted) {
+        console.log('📱 [PRINTER] Dispositivo encontrado:', device.name, device.id);
+        
+        const newPrinter: BluetoothPrinter = {
           id: device.id,
           name: device.name || 'Dispositivo Desconocido',
           connected: false,
@@ -169,211 +244,257 @@ export const PrinterProvider: React.FC<{ children: React.ReactNode }> = ({ child
           model: device.name?.includes('MPR') ? 'MPR-300' : undefined
         };
 
+        // FUSIONAR CON IMPRESORAS EXISTENTES
         setConnectedPrinters(prev => {
-          const existing = prev.find(p => p.id === device.id);
-          if (existing) {
-            return prev.map(p => p.id === device.id ? { ...p, device, lastSeen: new Date() } : p);
-          } else {
-            return [...prev, printer];
-          }
+          const updated = mergePrinter(prev, newPrinter);
+          savePrintersToStorage(updated);
+          return updated;
         });
 
-        console.log('✅ [PRINTER_CONTEXT] Impresora agregada:', device.name);
-        return [printer];
+        return [newPrinter];
       }
+
+      return [];
+
     } catch (error: any) {
-      console.error('❌ [PRINTER_CONTEXT] Error en escaneo:', error);
-      setLastError(`Error de escaneo: ${error.message}`);
+      if (abortController.current?.signal.aborted) {
+        console.log('🛑 [PRINTER] Escaneo cancelado');
+        return [];
+      }
+
+      console.error('❌ [PRINTER] Error en escaneo:', error);
+      
+      if (error.name === 'NotFoundError') {
+        setLastError('No se seleccionó ningún dispositivo');
+      } else if (error.name === 'SecurityError') {
+        setLastError('Permisos Bluetooth denegados');
+      } else {
+        setLastError(`Error de escaneo: ${error.message}`);
+      }
+      
+      return [];
     } finally {
       setIsScanning(false);
+      abortController.current = null;
     }
+  }, [checkBluetoothSupport, mergePrinter, savePrintersToStorage]);
 
-    return [];
-  }, [checkBluetoothSupport]);
-
-  // Conectar a impresora
   const connectToPrinter = useCallback(async (printerId: string): Promise<boolean> => {
-    console.log(`🔌 [PRINTER_CONTEXT] Conectando: ${printerId}`);
+    console.log(`🔌 [PRINTER] Conectando profesionalmente: ${printerId}`);
     
     const printer = connectedPrinters.find(p => p.id === printerId);
     if (!printer?.device) {
-      setLastError('Impresora no encontrada');
+      setLastError('Dispositivo no válido para conexión');
       return false;
     }
+
+    // Limpiar conexión previa si existe
+    cleanupPrinter(printerId);
+    setLastError(null);
 
     try {
-      const server = await printer.device.gatt!.connect();
-      const services = await server.getPrimaryServices();
-      
-      for (const service of services) {
-        try {
-          const characteristics = await service.getCharacteristics();
-          for (const char of characteristics) {
-            if (char.properties.write || char.properties.writeWithoutResponse) {
-              printer.characteristic = char;
-              printer.connected = true;
-              
-              setConnectedPrinters(prev =>
-                prev.map(p => p.id === printerId ? printer : p)
-              );
-              
-              console.log('🎉 [PRINTER_CONTEXT] Conectado exitosamente!');
-              setLastError(null);
-              return true;
-            }
-          }
-        } catch (charError) {
-          console.warn('⚠️ [PRINTER_CONTEXT] Error accediendo características:', charError);
-        }
-      }
+      // TIMEOUT DE CONEXIÓN
+      const connectWithTimeout = async () => {
+        const server = await printer.device!.gatt!.connect();
+        
+        // CONFIGURAR LISTENER DE DESCONEXIÓN
+        const handleDisconnect = () => {
+          console.log(`📡 [PRINTER] Desconectado automáticamente: ${printerId}`);
+          cleanupPrinter(printerId);
+        };
+        
+        printer.device!.addEventListener('gattserverdisconnected', handleDisconnect);
+        disconnectListeners.current.set(printerId, () => {
+          printer.device!.removeEventListener('gattserverdisconnected', handleDisconnect);
+        });
 
-      throw new Error('No se encontró característica de escritura');
+        // BUSCAR CARACTERÍSTICAS
+        const services = await server.getPrimaryServices();
+        let writeCharacteristic: BluetoothRemoteGATTCharacteristic | undefined;
+
+        for (const service of services) {
+          try {
+            const characteristics = await service.getCharacteristics();
+            for (const char of characteristics) {
+              if (char.properties.write || char.properties.writeWithoutResponse) {
+                writeCharacteristic = char;
+                break;
+              }
+            }
+            if (writeCharacteristic) break;
+          } catch (charError) {
+            console.warn('⚠️ [PRINTER] Error accediendo características:', charError);
+          }
+        }
+
+        if (!writeCharacteristic) {
+          throw new Error('No se encontraron características de escritura');
+        }
+
+        return writeCharacteristic;
+      };
+
+      // EJECUTAR CONEXIÓN CON TIMEOUT
+      const characteristic = await Promise.race([
+        connectWithTimeout(),
+        new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('Timeout de conexión')), BLUETOOTH_CONFIG.CONNECTION_TIMEOUT)
+        )
+      ]);
+
+      // ÉXITO - ACTUALIZAR ESTADO
+      activeConnections.current.set(printerId, printer.device);
+      
+      setConnectedPrinters(prev => 
+        prev.map(p => p.id === printerId ? {
+          ...p,
+          connected: true,
+          characteristic: characteristic,
+          lastSeen: new Date()
+        } : p)
+      );
+
+      console.log('✅ [PRINTER] Conexión exitosa y profesional');
+      return true;
+
     } catch (error: any) {
-      console.error('❌ [PRINTER_CONTEXT] Error conectando:', error);
-      setLastError(`Error de conexión: ${error.message}`);
+      console.error('❌ [PRINTER] Error de conexión:', error);
+      setLastError(`Conexión fallida: ${error.message}`);
+      cleanupPrinter(printerId);
       return false;
     }
-  }, [connectedPrinters]);
+  }, [connectedPrinters, cleanupPrinter]);
 
-  // Desconectar impresora
   const disconnectPrinter = useCallback(async (printerId: string): Promise<void> => {
-    const printer = connectedPrinters.find(p => p.id === printerId);
-    if (printer?.device?.gatt?.connected) {
-      try {
-        await printer.device.gatt.disconnect();
-      } catch (error) {
-        console.error('❌ [PRINTER_CONTEXT] Error desconectando:', error);
-      }
-    }
-
-    setConnectedPrinters(prev =>
-      prev.map(p => 
-        p.id === printerId 
-          ? { ...p, connected: false, characteristic: undefined }
-          : p
-      )
-    );
+    console.log(`🔌 [PRINTER] Desconectando profesionalmente: ${printerId}`);
+    cleanupPrinter(printerId);
     
-    console.log('✅ [PRINTER_CONTEXT] Desconectado:', printerId);
-  }, [connectedPrinters]);
+    // Actualizar storage
+    setConnectedPrinters(prev => {
+      const updated = prev.map(p => p.id === printerId ? {
+        ...p,
+        connected: false,
+        device: undefined,
+        characteristic: undefined
+      } : p);
+      savePrintersToStorage(updated);
+      return updated;
+    });
+  }, [cleanupPrinter, savePrintersToStorage]);
 
-  // Generar comandos optimizados con formato corregido
+  // ===== GENERACIÓN Y IMPRESIÓN DE RECIBOS =====
+
+  const cleanTextForPrinter = useCallback((text: string): string => {
+    return text
+      .replace(/₡/g, 'C')
+      .replace(/[áàâãäå]/gi, 'a')
+      .replace(/[éèêë]/gi, 'e')
+      .replace(/[íìîï]/gi, 'i')
+      .replace(/[óòôõö]/gi, 'o')
+      .replace(/[úùûü]/gi, 'u')
+      .replace(/[ñ]/gi, 'n')
+      .replace(/[^\x20-\x7E]/g, '') // Solo ASCII
+      .trim();
+  }, []);
+
   const generateReceiptCommands = useCallback((receiptData: ReceiptData): Uint8Array => {
+    console.log('📝 [PRINTER] Generando recibo profesional...');
+    
     const { company, order, payment, receiptNumber, timestamp, settings } = receiptData;
     let commands = '';
 
-    // Inicialización optimizada
-    commands += ESC_POS.INIT;
-    commands += ESC_POS.DENSITY(settings.density);
-    commands += ESC_POS.FONT_A;
+    // Inicializar impresora
+    commands += ESC_POS_COMMANDS.INIT;
+    commands += ESC_POS_COMMANDS.DENSITY(settings.density);
 
-    // Header corregido - 16 chars max para doble altura
-    commands += ESC_POS.ALIGN_CENTER;
-    commands += ESC_POS.BOLD_ON;
-    commands += ESC_POS.DOUBLE_HEIGHT;
-    const companyName = cleanTextForPrinter(company.name);
-    commands += `${companyName.length > 16 ? companyName.substring(0, 16) : companyName}\n`;
-    commands += ESC_POS.NORMAL_SIZE;
-    commands += ESC_POS.BOLD_OFF;
-    
-    // Dirección CORREGIDA - dividir en líneas de 32 chars máximo
-    const address = cleanTextForPrinter(company.address);
-    if (address.length <= 32) {
-      commands += `${address}\n`;
-    } else {
-      // Dividir inteligentemente
-      const words = address.split(' ');
-      let currentLine = '';
-      
-      for (const word of words) {
-        if ((currentLine + word).length <= 32) {
-          currentLine += (currentLine ? ' ' : '') + word;
-        } else {
-          if (currentLine) commands += `${currentLine}\n`;
-          currentLine = word.length <= 32 ? word : word.substring(0, 32);
-        }
-      }
-      if (currentLine) commands += `${currentLine}\n`;
-    }
-    
-    if (company.phone) commands += `Tel: ${cleanTextForPrinter(company.phone)}\n`;
-    commands += ESC_POS.LINE_FEED;
+    // Header centrado
+    commands += ESC_POS_COMMANDS.ALIGN_CENTER;
+    commands += ESC_POS_COMMANDS.BOLD_ON;
+    commands += cleanTextForPrinter(company.name) + ESC_POS_COMMANDS.LF;
+    commands += ESC_POS_COMMANDS.BOLD_OFF;
+    commands += cleanTextForPrinter(company.address) + ESC_POS_COMMANDS.LF;
+    if (company.phone) commands += 'Tel: ' + cleanTextForPrinter(company.phone) + ESC_POS_COMMANDS.LF;
+    commands += ESC_POS_COMMANDS.LF;
 
-    // Resto del recibo (productos, totales, etc.)
-    commands += ESC_POS.ALIGN_LEFT;
-    commands += '='.repeat(32) + '\n';
-    commands += ESC_POS.ALIGN_CENTER + ESC_POS.BOLD_ON + 'RECIBO DE COMPRA\n' + ESC_POS.BOLD_OFF;
-    commands += '='.repeat(32) + '\n' + ESC_POS.LINE_FEED;
-    
-    commands += ESC_POS.ALIGN_LEFT;
-    commands += `Recibo #: ${receiptNumber}\n`;
-    commands += `Mesa: ${order.tableNumber}\n`;
-    commands += `Fecha: ${timestamp.toLocaleDateString('es-CR')}\n`;
-    commands += `Hora: ${timestamp.toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit' })}\n`;
-    commands += ESC_POS.LINE_FEED;
+    // Info del recibo
+    commands += ESC_POS_COMMANDS.ALIGN_LEFT;
+    commands += 'Recibo #: ' + receiptNumber + ESC_POS_COMMANDS.LF;
+    commands += 'Mesa: ' + order.tableNumber + ESC_POS_COMMANDS.LF;
+    commands += 'Fecha: ' + timestamp.toLocaleDateString('es-CR') + ESC_POS_COMMANDS.LF;
+    commands += 'Hora: ' + timestamp.toLocaleTimeString('es-CR', { 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    }) + ESC_POS_COMMANDS.LF;
+    commands += ESC_POS_COMMANDS.LF;
 
     // Productos
-    commands += '-'.repeat(32) + '\n';
-    commands += ESC_POS.BOLD_ON + 'PRODUCTOS\n' + ESC_POS.BOLD_OFF;
-    commands += '-'.repeat(32) + '\n';
-    
+    commands += ESC_POS_COMMANDS.BOLD_ON;
+    commands += 'PRODUCTOS' + ESC_POS_COMMANDS.LF;
+    commands += ESC_POS_COMMANDS.BOLD_OFF;
+    commands += '-'.repeat(32) + ESC_POS_COMMANDS.LF;
+
     order.items?.forEach((item: any) => {
       const name = item.product?.name || item.menuItem?.name || 'Producto';
       const qty = item.quantity;
       const subtotal = item.subtotal;
 
-      const cleanName = cleanTextForPrinter(name);
-      const displayName = cleanName.length > 32 ? cleanName.substring(0, 32) : cleanName;
-      commands += `${displayName}\n`;
-      
-      const qtyLine = `  ${qty} x C${subtotal.toLocaleString('es-CR')}`;
-      commands += `${qtyLine}\n`;
+      commands += cleanTextForPrinter(name).substring(0, 32) + ESC_POS_COMMANDS.LF;
+      commands += `  ${qty} x C${Math.round(subtotal)}` + ESC_POS_COMMANDS.LF;
       
       if (item.notes) {
-        const notes = cleanTextForPrinter(item.notes);
-        commands += `  ${notes.substring(0, 30)}\n`;
+        commands += '  ' + cleanTextForPrinter(item.notes).substring(0, 30) + ESC_POS_COMMANDS.LF;
       }
     });
 
     // Totales
-    commands += '-'.repeat(32) + '\n';
-    const subtotalLine = `Subtotal: ${' '.repeat(32 - 10 - order.subtotal.toLocaleString('es-CR').length - 1)}C${order.subtotal.toLocaleString('es-CR')}`;
-    commands += subtotalLine.substring(0, 32) + '\n';
-    
-    const serviceLine = `Servicio: ${' '.repeat(32 - 10 - order.serviceCharge.toLocaleString('es-CR').length - 1)}C${order.serviceCharge.toLocaleString('es-CR')}`;
-    commands += serviceLine.substring(0, 32) + '\n';
-    
-    commands += '='.repeat(32) + '\n';
-    commands += ESC_POS.BOLD_ON;
-    const totalLine = `TOTAL: ${' '.repeat(32 - 7 - order.total.toLocaleString('es-CR').length - 1)}C${order.total.toLocaleString('es-CR')}`;
-    commands += totalLine.substring(0, 32) + '\n';
-    commands += ESC_POS.BOLD_OFF;
-    commands += ESC_POS.LINE_FEED;
+    commands += '-'.repeat(32) + ESC_POS_COMMANDS.LF;
+    commands += `Subtotal: C${Math.round(order.subtotal)}` + ESC_POS_COMMANDS.LF;
+    commands += `Servicio (10%): C${Math.round(order.serviceCharge)}` + ESC_POS_COMMANDS.LF;
+    commands += ESC_POS_COMMANDS.BOLD_ON;
+    commands += `TOTAL: C${Math.round(order.total)}` + ESC_POS_COMMANDS.LF;
+    commands += ESC_POS_COMMANDS.BOLD_OFF;
+    commands += ESC_POS_COMMANDS.LF;
+
+    // Pago
+    if (payment) {
+      commands += 'PAGO' + ESC_POS_COMMANDS.LF;
+      const methodText = payment.method === 'cash' ? 'Efectivo' : 'Tarjeta';
+      const currencySymbol = payment.currency === 'USD' ? '$' : 'C';
+      
+      commands += `Metodo: ${methodText} (${payment.currency})` + ESC_POS_COMMANDS.LF;
+      commands += `Monto: ${currencySymbol}${Math.round(payment.amount)}` + ESC_POS_COMMANDS.LF;
+      
+      if (payment.method === 'cash' && payment.received && payment.change !== undefined) {
+        commands += `Recibido: ${currencySymbol}${Math.round(payment.received)}` + ESC_POS_COMMANDS.LF;
+        if (payment.change > 0) {
+          commands += `Cambio: ${currencySymbol}${Math.round(payment.change)}` + ESC_POS_COMMANDS.LF;
+        }
+      }
+      commands += ESC_POS_COMMANDS.LF;
+    }
 
     // Footer
-    commands += ESC_POS.ALIGN_CENTER;
-    commands += 'Gracias por su visita!\n';
-    commands += 'Vuelva pronto\n';
-    commands += ESC_POS.LINE_FEED + ESC_POS.LINE_FEED;
-    
-    if (settings.cutPaper) commands += ESC_POS.PAPER_CUT;
+    commands += ESC_POS_COMMANDS.ALIGN_CENTER;
+    commands += 'Gracias por su visita!' + ESC_POS_COMMANDS.LF;
+    commands += 'Vuelva pronto' + ESC_POS_COMMANDS.LF;
+    commands += ESC_POS_COMMANDS.LF + ESC_POS_COMMANDS.LF;
 
-    // Conversión optimizada a bytes
-    const cleanCommands = cleanTextForPrinter(commands);
-    const commandsArray = new Uint8Array(cleanCommands.length);
-    for (let i = 0; i < cleanCommands.length; i++) {
-      commandsArray[i] = cleanCommands.charCodeAt(i);
+    // Cortar papel
+    if (settings.cutPaper) {
+      commands += ESC_POS_COMMANDS.CUT;
     }
-    
-    console.log(`📤 [PRINTER_CONTEXT] Comandos generados: ${commandsArray.length} bytes`);
-    return commandsArray;
+
+    // Convertir a bytes
+    const encoder = new TextEncoder();
+    return encoder.encode(commands);
   }, [cleanTextForPrinter]);
 
-  // Imprimir recibo OPTIMIZADO
   const printReceipt = useCallback(async (
     printerId: string, 
     receiptData: ReceiptData
   ): Promise<boolean> => {
+    console.log(`🖨️ [PRINTER] Imprimiendo profesionalmente: ${printerId}`);
+    
     const printer = connectedPrinters.find(p => p.id === printerId && p.connected);
     if (!printer?.characteristic) {
       setLastError('Impresora no conectada');
@@ -385,69 +506,83 @@ export const PrinterProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     try {
       const commands = generateReceiptCommands(receiptData);
-      
-      // OPTIMIZACIÓN CRÍTICA: Chunks más grandes y delay reducido
-      const CHUNK_SIZE = 64; // Aumentado de 20 a 64 bytes
-      const DELAY = 5; // Reducido de 10ms a 5ms
-      
-      console.log(`🚀 [PRINTER_CONTEXT] Impresión RÁPIDA: ${CHUNK_SIZE} bytes chunks, ${DELAY}ms delay`);
-      
-      for (let i = 0; i < commands.length; i += CHUNK_SIZE) {
-        const chunk = commands.slice(i, i + CHUNK_SIZE);
-        await printer.characteristic.writeValue(chunk);
-        
-        if (i + CHUNK_SIZE < commands.length) {
-          await new Promise(resolve => setTimeout(resolve, DELAY));
-        }
-        
-        // Log cada 20 chunks para no spamear
-        if (Math.floor(i / CHUNK_SIZE) % 20 === 0) {
-          const progress = Math.round((i / commands.length) * 100);
-          console.log(`📊 [PRINTER_CONTEXT] Progreso: ${progress}%`);
+      console.log(`📤 [PRINTER] Enviando ${commands.length} bytes...`);
+
+      // Envío por chunks con retry
+      for (let attempt = 0; attempt < BLUETOOTH_CONFIG.MAX_RETRIES; attempt++) {
+        try {
+          for (let i = 0; i < commands.length; i += BLUETOOTH_CONFIG.CHUNK_SIZE) {
+            const chunk = commands.slice(i, i + BLUETOOTH_CONFIG.CHUNK_SIZE);
+            await printer.characteristic.writeValue(chunk);
+            
+            if (i + BLUETOOTH_CONFIG.CHUNK_SIZE < commands.length) {
+              await new Promise(resolve => setTimeout(resolve, BLUETOOTH_CONFIG.CHUNK_DELAY));
+            }
+          }
+          
+          console.log('✅ [PRINTER] Recibo enviado exitosamente');
+          return true;
+        } catch (chunkError) {
+          console.warn(`⚠️ [PRINTER] Intento ${attempt + 1} fallido:`, chunkError);
+          if (attempt === BLUETOOTH_CONFIG.MAX_RETRIES - 1) throw chunkError;
+          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
         }
       }
-      
-      console.log('🎉 [PRINTER_CONTEXT] Impresión completada!');
-      return true;
+
+      return false;
     } catch (error: any) {
-      console.error('❌ [PRINTER_CONTEXT] Error imprimiendo:', error);
-      setLastError(`Error de impresión: ${error.message}`);
+      console.error('❌ [PRINTER] Error de impresión:', error);
+      setLastError(`Error impresión: ${error.message}`);
+      
+      // Si es error de conexión, limpiar impresora
+      if (error.name === 'NetworkError' || error.message.includes('GATT')) {
+        cleanupPrinter(printerId);
+      }
+      
       return false;
     } finally {
       setIsPrinting(false);
     }
-  }, [connectedPrinters, generateReceiptCommands]);
+  }, [connectedPrinters, generateReceiptCommands, cleanupPrinter]);
 
-  // Helper para crear datos de recibo
+  // ===== UTILIDADES =====
+
+  const getNextReceiptNumber = useCallback((): string => {
+    try {
+      const current = parseInt(localStorage.getItem(STORAGE_KEYS.RECEIPT_COUNTER) || '0');
+      const next = current + 1;
+      localStorage.setItem(STORAGE_KEYS.RECEIPT_COUNTER, next.toString());
+      return next.toString().padStart(4, '0');
+    } catch {
+      return Date.now().toString().slice(-4);
+    }
+  }, []);
+
   const createReceiptData = useCallback((
     order: any, 
     payment: any, 
     table: any,
     companyInfo?: CompanyInfo
   ): ReceiptData => {
-    const company = companyInfo || JSON.parse(
-      localStorage.getItem('fischer_company_info') || 
-      JSON.stringify({
-        name: 'Soda Fischer',
-        phone: '+506 8787 6138',
-        address: '27 de Abril Santa Cruz Guanacaste',
-        taxId: '',
-        email: '',
-        website: ''
-      })
-    );
+    const company = companyInfo || {
+      name: 'Soda Fischer',
+      phone: '+506 8787 6138',
+      address: '27 de Abril Santa Cruz Guanacaste',
+      taxId: '',
+      email: '',
+      website: ''
+    };
 
     return {
       company,
       order,
       payment,
-      receiptNumber: `${Date.now().toString().slice(-6)}`,
+      receiptNumber: getNextReceiptNumber(),
       timestamp: new Date(),
       settings: defaultSettings
     };
-  }, []);
+  }, [getNextReceiptNumber]);
 
-  // Utilidades adicionales
   const clearError = useCallback(() => setLastError(null), []);
   
   const getDefaultPrinter = useCallback((): BluetoothPrinter | null => {
@@ -457,13 +592,40 @@ export const PrinterProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const printWithDefaultPrinter = useCallback(async (receiptData: ReceiptData): Promise<boolean> => {
     const defaultPrinter = getDefaultPrinter();
     if (!defaultPrinter) {
-      console.warn('⚠️ [PRINTER_CONTEXT] No hay impresora por defecto');
       setLastError('No hay impresoras conectadas');
       return false;
     }
-    
-    return await printReceipt(defaultPrinter.id, receiptData);
+    return printReceipt(defaultPrinter.id, receiptData);
   }, [getDefaultPrinter, printReceipt]);
+
+  const resetAllPrinters = useCallback(() => {
+    console.log('🔄 [PRINTER] Reset completo del sistema');
+    cleanupAllPrinters();
+    setConnectedPrinters([]);
+    localStorage.removeItem(STORAGE_KEYS.PRINTERS);
+    setLastError(null);
+  }, [cleanupAllPrinters]);
+
+  // ===== EFECTOS =====
+
+  // Cargar impresoras al inicializar
+  useEffect(() => {
+    const savedPrinters = loadPrintersFromStorage();
+    if (savedPrinters.length > 0) {
+      setConnectedPrinters(savedPrinters);
+      console.log(`📂 [PRINTER] Cargadas ${savedPrinters.length} impresoras del storage`);
+    }
+  }, [loadPrintersFromStorage]);
+
+  // Limpieza al desmontar
+  useEffect(() => {
+    return () => {
+      console.log('🧹 [PRINTER] Desmontando Provider - Limpieza final');
+      cleanupAllPrinters();
+    };
+  }, [cleanupAllPrinters]);
+
+  // ===== CONTEXT VALUE =====
 
   const contextValue: PrinterContextType = {
     connectedPrinters,
@@ -479,6 +641,7 @@ export const PrinterProvider: React.FC<{ children: React.ReactNode }> = ({ child
     clearError,
     getDefaultPrinter,
     printWithDefaultPrinter,
+    resetAllPrinters,
   };
 
   return (
@@ -488,7 +651,7 @@ export const PrinterProvider: React.FC<{ children: React.ReactNode }> = ({ child
   );
 };
 
-// Hook para usar el contexto
+// HOOK PARA USAR EL CONTEXTO
 export const usePrinter = (): PrinterContextType => {
   const context = useContext(PrinterContext);
   if (context === undefined) {
