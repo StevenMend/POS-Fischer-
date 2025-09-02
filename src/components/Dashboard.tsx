@@ -184,85 +184,149 @@ const Dashboard: React.FC<DashboardProps> = ({
       </div>
 
       <div className="max-w-7xl mx-auto p-3 sm:p-4 md:p-6">
-        {/* 🔥 Stats Cards - GRID RESPONSIVO MEJORADO */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6 md:mb-8">
+        {/* 🔥 Stats Cards - DISEÑO LIMPIO Y PROFESIONAL */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
           
-          {/* Dinero físico total */}
-          <div className="bg-white/70 backdrop-blur-xl rounded-xl md:rounded-2xl shadow-xl border border-white/20 p-3 sm:p-4 md:p-6 hover:shadow-2xl transition-all duration-300 hover:scale-105">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs md:text-sm font-semibold text-slate-500 uppercase tracking-wide truncate">
+          {/* 🔥 EFECTIVO FÍSICO TOTAL - DISEÑO MEJORADO */}
+          <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/30 p-6 hover:shadow-2xl transition-all duration-300 hover:scale-[1.02]">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex-1">
+                <p className="text-sm font-bold text-slate-600 uppercase tracking-wide mb-2">
                   Efectivo Total
                 </p>
-                <p className="text-base sm:text-lg md:text-xl lg:text-3xl font-bold text-slate-800 mt-1 truncate">
+                <p className="text-3xl font-black text-emerald-600">
                   {formatCurrency(cashRegister.currentCashCRC)}
                 </p>
-                <p className="text-xs text-slate-400 truncate">
-                  Base: {formatCurrency(cashRegister.openingCashCRC)}
-                </p>
               </div>
-              <div className="p-1.5 sm:p-2 md:p-3 bg-gradient-to-br from-emerald-500 to-green-600 rounded-lg md:rounded-xl ml-2">
-                <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 lg:w-8 lg:h-8 text-white" />
+              <div className="p-3 bg-gradient-to-br from-emerald-500 to-green-600 rounded-xl shadow-lg">
+                <DollarSign className="w-7 h-7 text-white" />
+              </div>
+            </div>
+            
+            {/* Desglose limpio */}
+            <div className="space-y-2 pt-3 border-t border-slate-200">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-slate-600 font-medium">Base inicial</span>
+                <span className="text-sm font-bold text-slate-800">
+                  {formatCurrency(cashRegister.openingCashCRC)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-slate-600 font-medium">Ventas efectivo</span>
+                <span className="text-sm font-bold text-green-600">
+                  {formatCurrency(cashRegister.cashPaymentsCRC)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center pt-2 border-t border-slate-100">
+                <span className="text-xs text-slate-500 font-medium">Estado</span>
+                <span className={`text-xs font-bold px-2 py-1 rounded-full ${
+                  Math.abs((cashRegister.openingCashCRC + cashRegister.cashPaymentsCRC) - cashRegister.currentCashCRC) < 1 
+                    ? 'bg-green-100 text-green-700' 
+                    : 'bg-red-100 text-red-700'
+                }`}>
+                  {(cashRegister.openingCashCRC + cashRegister.cashPaymentsCRC) === cashRegister.currentCashCRC 
+                    ? 'Cuadra' 
+                    : 'Diferencia'}
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Ventas del día */}
-          <div className="bg-white/70 backdrop-blur-xl rounded-xl md:rounded-2xl shadow-xl border border-white/20 p-3 sm:p-4 md:p-6 hover:shadow-2xl transition-all duration-300 hover:scale-105">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs md:text-sm font-semibold text-slate-500 uppercase tracking-wide truncate">
+          {/* 🔥 VENTAS DEL DÍA - DISEÑO MEJORADO */}
+          <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/30 p-6 hover:shadow-2xl transition-all duration-300 hover:scale-[1.02]">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex-1">
+                <p className="text-sm font-bold text-slate-600 uppercase tracking-wide mb-2">
                   Ventas del Día
                 </p>
-                <p className="text-base sm:text-lg md:text-xl lg:text-3xl font-bold text-blue-600 mt-1 truncate">
+                <p className="text-3xl font-black text-blue-600">
                   {formatCurrency(cashRegister.totalSalesCRC)}
                 </p>
-                <p className="text-xs text-blue-400 truncate">Ingresos por ventas</p>
               </div>
-              <div className="p-1.5 sm:p-2 md:p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg md:rounded-xl ml-2">
-                <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 lg:w-8 lg:h-8 text-white" />
+              <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl shadow-lg">
+                <TrendingUp className="w-7 h-7 text-white" />
+              </div>
+            </div>
+            
+            {/* Desglose limpio */}
+            <div className="space-y-2 pt-3 border-t border-slate-200">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-slate-600 font-medium">Pagos efectivo</span>
+                <span className="text-sm font-bold text-green-600">
+                  {formatCurrency(cashRegister.cashPaymentsCRC)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-slate-600 font-medium">Pagos tarjeta</span>
+                <span className="text-sm font-bold text-purple-600">
+                  {formatCurrency(cashRegister.cardPaymentsCRC)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center pt-2 border-t border-slate-100">
+                <span className="text-xs text-slate-500 font-medium">Verificación</span>
+                <span className={`text-xs font-bold px-2 py-1 rounded-full ${
+                  (cashRegister.cashPaymentsCRC + cashRegister.cardPaymentsCRC) === cashRegister.totalSalesCRC
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-yellow-100 text-yellow-700'
+                }`}>
+                  {(cashRegister.cashPaymentsCRC + cashRegister.cardPaymentsCRC) === cashRegister.totalSalesCRC
+                    ? 'Correcto'
+                    : 'Revisar'}
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Órdenes procesadas */}
-          <div className="bg-white/70 backdrop-blur-xl rounded-xl md:rounded-2xl shadow-xl border border-white/20 p-3 sm:p-4 md:p-6 hover:shadow-2xl transition-all duration-300 hover:scale-105">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs md:text-sm font-semibold text-slate-500 uppercase tracking-wide truncate">
+          {/* Órdenes procesadas - DISEÑO MEJORADO */}
+          <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/30 p-6 hover:shadow-2xl transition-all duration-300 hover:scale-[1.02]">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex-1">
+                <p className="text-sm font-bold text-slate-600 uppercase tracking-wide mb-2">
                   Órdenes Procesadas
                 </p>
-                <p className="text-base sm:text-lg md:text-xl lg:text-3xl font-bold text-purple-600 mt-1">
+                <p className="text-3xl font-black text-purple-600">
                   {cashRegister.totalOrders}
                 </p>
-                <p className="text-xs text-purple-400 truncate">
-                  Promedio: {cashRegister.totalOrders > 0 
+              </div>
+              <div className="p-3 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl shadow-lg">
+                <FileText className="w-7 h-7 text-white" />
+              </div>
+            </div>
+            
+            <div className="pt-3 border-t border-slate-200">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-slate-600 font-medium">Promedio por orden</span>
+                <span className="text-sm font-bold text-slate-800">
+                  {cashRegister.totalOrders > 0 
                     ? formatCurrency(cashRegister.totalSalesCRC / cashRegister.totalOrders)
                     : '₡0'}
-                </p>
-              </div>
-              <div className="p-1.5 sm:p-2 md:p-3 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg md:rounded-xl ml-2">
-                <FileText className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 lg:w-8 lg:h-8 text-white" />
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Estado operativo */}
-          <div className="bg-white/70 backdrop-blur-xl rounded-xl md:rounded-2xl shadow-xl border border-white/20 p-3 sm:p-4 md:p-6 hover:shadow-2xl transition-all duration-300 hover:scale-105">
-            <div className="flex items-center justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs md:text-sm font-semibold text-slate-500 uppercase tracking-wide truncate">
+          {/* Estado de mesas - DISEÑO MEJORADO */}
+          <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/30 p-6 hover:shadow-2xl transition-all duration-300 hover:scale-[1.02]">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex-1">
+                <p className="text-sm font-bold text-slate-600 uppercase tracking-wide mb-2">
                   Estado Mesas
                 </p>
-                <p className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold mt-1 text-green-600">
+                <p className="text-3xl font-black text-green-600">
                   {occupiedTables.length}/{tables.length}
                 </p>
-                <p className="text-xs text-slate-400 truncate">
-                  mesas ocupadas
-                </p>
               </div>
-              <div className="p-1.5 sm:p-2 md:p-3 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg md:rounded-xl ml-2">
-                <Users className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 lg:w-8 lg:h-8 text-white" />
+              <div className="p-3 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl shadow-lg">
+                <Users className="w-7 h-7 text-white" />
+              </div>
+            </div>
+            
+            <div className="pt-3 border-t border-slate-200">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-slate-600 font-medium">Ocupación</span>
+                <span className="text-sm font-bold text-slate-800">
+                  {tables.length > 0 ? Math.round((occupiedTables.length / tables.length) * 100) : 0}%
+                </span>
               </div>
             </div>
           </div>

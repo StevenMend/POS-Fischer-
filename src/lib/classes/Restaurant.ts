@@ -966,13 +966,39 @@ export class Restaurant {
     return this.payments;
   }
 
+  // 🔥 MÉTODO CORREGIDO - MANEJAR FECHAS STRING Y DATE
   getTodaysOrders(): Order[] {
     const today = getClosureDateString();
     return Array.from(this.orders.values()).filter(order => {
-      const orderDate = order.createdAt instanceof Date 
-        ? getClosureDateString(order.createdAt)
-        : today;
-      return orderDate === today;
+      // ✅ MANEJAR TANTO Date COMO string correctamente
+      let orderDate: string;
+      
+      if (order.createdAt instanceof Date) {
+        // Si es Date object, convertir usando función helper
+        orderDate = getClosureDateString(order.createdAt);
+      } else if (typeof order.createdAt === 'string') {
+        // Si es string (cargado desde localStorage), parsear y convertir
+        orderDate = getClosureDateString(new Date(order.createdAt));
+      } else {
+        // Fallback a hoy si no hay createdAt válido
+        console.warn('⚠️ Orden sin createdAt válido:', order.id);
+        orderDate = today;
+      }
+      
+      const isToday = orderDate === today;
+      
+      // Log solo para debugging en desarrollo
+      if (process.env.NODE_ENV === 'development' && isToday) {
+        console.log('📅 Orden de hoy encontrada:', {
+          orderId: order.id,
+          orderDate,
+          today,
+          createdAt: order.createdAt,
+          total: order.total
+        });
+      }
+      
+      return isToday;
     });
   }
 
