@@ -7,6 +7,9 @@ const CURRENCY_SYMBOLS = {
   USD: '$'
 } as const;
 
+// 🔥 TIMEZONE DE COSTA RICA
+const CR_TIMEZONE = 'America/Costa_Rica';
+
 // Formateo de moneda
 export const formatCurrency = (amount: number, currency: 'CRC' | 'USD'): string => {
   const symbol = CURRENCY_SYMBOLS[currency];
@@ -46,20 +49,39 @@ export const calculateTotal = (subtotal: number): number => {
   return subtotal + calculateServiceCharge(subtotal);
 };
 
-// Formatear fecha
-export const formatDate = (date: Date): string => {
+// 🔥 SOLUCION DEFINITIVA: Fecha actual Costa Rica en formato YYYY-MM-DD
+export const getClosureDateString = (): string => {
+  // Crear fecha actual en timezone Costa Rica
+  const now = new Date();
+  
+  // 🔥 SOLUCIÓN: Usar toLocaleDateString con timezone correcto
+  const today = now.toLocaleDateString('en-CA', {
+    timeZone: CR_TIMEZONE
+  });
+  
+  // Verificar que sea hoy (miércoles 13 agosto 2025)
+  console.log('📅 Fecha de cierre:', today);
+  return today; // Formato YYYY-MM-DD automático con 'en-CA'
+};
+
+// 🔥 FORMATEAR FECHA PARA MOSTRAR (timezone Costa Rica)
+export const formatDateCR = (dateString: string): string => {
+  // Convertir YYYY-MM-DD a fecha local
+  const [year, month, day] = dateString.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  
   return date.toLocaleDateString('es-CR', {
+    weekday: 'long',
     year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
+    month: 'long',
+    day: 'numeric'
   });
 };
 
-// Formatear hora
+// 🔥 LIMPIAR: Solo las funciones que realmente necesitamos
 export const formatTime = (date: Date): string => {
   return date.toLocaleTimeString('es-CR', {
+    timeZone: CR_TIMEZONE,
     hour: '2-digit',
     minute: '2-digit'
   });
@@ -73,4 +95,25 @@ export const calculateChange = (total: number, received: number): number => {
 // Validar cantidad de dinero
 export const isValidAmount = (amount: number): boolean => {
   return amount > 0 && Number.isFinite(amount);
+};
+
+// 🔥 UTILIDADES PARA PERÍODOS (reportes)
+export const getPeriodDates = (period: 'week' | 'month'): { startDate: string; endDate: string } => {
+  const endDate = getClosureDateString(); // Hoy
+  
+  let startDate: string;
+  
+  if (period === 'week') {
+    // Hace 7 días
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    startDate = weekAgo.toLocaleDateString('en-CA', { timeZone: CR_TIMEZONE });
+  } else {
+    // Primer día del mes actual
+    const firstDay = new Date();
+    firstDay.setDate(1);
+    startDate = firstDay.toLocaleDateString('en-CA', { timeZone: CR_TIMEZONE });
+  }
+  
+  return { startDate, endDate };
 };

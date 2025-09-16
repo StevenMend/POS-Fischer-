@@ -10,7 +10,8 @@ import {
   Banknote,
   Calendar,
   Download,
-  AlertTriangle
+  AlertTriangle,
+  History
 } from 'lucide-react';
 import { CashRegister, Order, Table, Payment } from '../types';
 
@@ -29,6 +30,38 @@ const Reports: React.FC<ReportsProps> = ({
   onBack,
   onCloseCash
 }) => {
+  // 🔥 VALIDACIÓN ESTRICTA: Solo mostrar Reports si caja está ABIERTA
+  if (!cashRegister?.isOpen) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="bg-white/80 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-12 text-center max-w-lg">
+          <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <History className="w-12 h-12 text-blue-600" />
+          </div>
+          <h2 className="text-3xl font-bold text-slate-800 mb-4">Caja Cerrada</h2>
+          <p className="text-slate-600 mb-8 text-lg">
+            Los reportes en tiempo real solo están disponibles cuando la caja está abierta.
+          </p>
+          <p className="text-slate-500 mb-8">
+            Para ver datos de días anteriores, usa el Historial de Cierres.
+          </p>
+          <div className="space-y-4">
+            <button
+              onClick={onBack}
+              className="w-full bg-gradient-to-r from-slate-600 to-gray-700 hover:from-slate-700 hover:to-gray-800 text-white px-8 py-4 rounded-2xl font-bold text-lg transition-all duration-300 shadow-xl hover:shadow-2xl hover:scale-105"
+            >
+              Volver al Dashboard
+            </button>
+            <p className="text-sm text-slate-400">
+              💡 Tip: Usa Settings &gt; "Historial de Cierres" para ver datos pasados
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 🔥 REST OF THE CODE - SOLO SE EJECUTA SI CAJA ESTÁ ABIERTA
   // 🔥 ARQUITECTURA PROFESIONAL: Usar cashRegister como SINGLE SOURCE OF TRUTH
   const reportData = useMemo(() => {
     if (!cashRegister) {

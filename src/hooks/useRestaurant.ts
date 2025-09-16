@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Restaurant } from '../lib/classes/Restaurant';
-import { Table, Order, MenuItem, CashRegister, Payment, DailyRecord, Expense } from '../types';
+import { Table, Order, MenuItem, CashRegister, Payment, DailyRecord, Expense, ClosureEditData, ClosureOperationResult } from '../types';
 
 export const useRestaurant = () => {
   const [restaurant] = useState(() => new Restaurant());
-  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
   const [, forceUpdate] = useState({});
 
@@ -13,68 +12,66 @@ export const useRestaurant = () => {
     forceUpdate({});
   }, []);
 
-  // 🔥 CARGAR EXPENSES DESDE LOCALSTORAGE
-  const loadExpenses = useCallback(() => {
-    try {
-      const savedExpenses = localStorage.getItem('fischer_expenses');
-      if (savedExpenses) {
-        setExpenses(JSON.parse(savedExpenses));
-      }
-    } catch (error) {
-      console.error('Error loading expenses:', error);
-      setExpenses([]);
-    }
-  }, []);
-
-  // 🔥 GUARDAR EXPENSES EN LOCALSTORAGE
-  const saveExpenses = useCallback((newExpenses: Expense[]) => {
-    try {
-      localStorage.setItem('fischer_expenses', JSON.stringify(newExpenses));
-      setExpenses(newExpenses);
-    } catch (error) {
-      console.error('Error saving expenses:', error);
-    }
-  }, []);
-
   useEffect(() => {
-    console.log('🎣 useRestaurant hook inicializado');
-    
-    // Cargar expenses al inicializar
-    loadExpenses();
-    
     // Simular carga inicial
     const timer = setTimeout(() => {
       setLoading(false);
-      console.log('✅ useRestaurant hook listo');
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [loadExpenses]);
+  }, [restaurant]);
 
-  // Métodos de Caja
+  // MÉTODOS DE CAJA - Sin cambios
   const openCashRegister = useCallback((crcAmount: number, usdAmount: number) => {
-    console.log('🎣 Hook: Abriendo caja registradora');
+    console.log('💰 Abriendo caja:', crcAmount, 'CRC +', usdAmount, 'USD');
     restaurant.openCashRegister(crcAmount, usdAmount);
     triggerUpdate();
   }, [restaurant, triggerUpdate]);
 
   const closeCashRegister = useCallback((): DailyRecord => {
-    console.log('🎣 Hook: Cerrando caja registradora');
+    console.log('🔒 Cerrando caja...');
     const record = restaurant.closeCashRegister();
+    console.log('✅ Caja cerrada. Record:', record.date, '- ₡' + record.totalSalesCRC);
     triggerUpdate();
     return record;
   }, [restaurant, triggerUpdate]);
 
-  // Métodos de Órdenes
+  // MÉTODOS DE RECOVERY SYSTEM - Sin cambios
+  const detectInconsistentStates = useCallback(() => {
+    return restaurant.detectInconsistentStates();
+  }, [restaurant]);
+
+  const repairInconsistentStates = useCallback(() => {
+    const result = restaurant.repairInconsistentStates();
+    triggerUpdate();
+    return result;
+  }, [restaurant, triggerUpdate]);
+
+  const freeTable = useCallback((tableNumber: number) => {
+    restaurant.freeTable(tableNumber);
+    triggerUpdate();
+  }, [restaurant, triggerUpdate]);
+
+  const cancelOrderAndFreeTable = useCallback((orderId: string) => {
+    const result = restaurant.cancelOrderAndFreeTable(orderId);
+    triggerUpdate();
+    return result;
+  }, [restaurant, triggerUpdate]);
+
+  const resetOrder = useCallback((orderId: string) => {
+    const newOrder = restaurant.resetOrder(orderId);
+    triggerUpdate();
+    return newOrder;
+  }, [restaurant, triggerUpdate]);
+
+  // MÉTODOS DE ÓRDENES - Sin cambios
   const createOrder = useCallback((tableNumber: number, notes?: string): Order => {
-    console.log('🎣 Hook: Creando orden para mesa', tableNumber);
     const order = restaurant.createOrder(tableNumber, notes);
     triggerUpdate();
     return order;
   }, [restaurant, triggerUpdate]);
 
   const updateOrder = useCallback((order: Order) => {
-    console.log('🎣 Hook: Actualizando orden', order.id);
     restaurant.updateOrder(order);
     triggerUpdate();
   }, [restaurant, triggerUpdate]);
@@ -86,11 +83,22 @@ export const useRestaurant = () => {
     method: 'cash' | 'card', 
     received?: number
   ): Payment => {
-    console.log('🎣 Hook: Procesando pago');
     const payment = restaurant.processPayment(orderId, amount, currency, method, received);
+    console.log('💳 Pago procesado:', amount, currency);
     triggerUpdate();
     return payment;
   }, [restaurant, triggerUpdate]);
+
+  // GETTERS OPTIMIZADOS - Sin cambios
+  const getRestaurantState = useCallback(() => {
+    return {
+      tables: restaurant.getTables(),
+      menuItems: restaurant.getMenuItems(),
+      cashRegister: restaurant.getCashRegister(),
+      expenses: restaurant.getExpenses(),
+      todaysOrders: restaurant.getTodaysOrders()
+    };
+  }, [restaurant]);
 
   const getOrder = useCallback((orderId: string): Order | undefined => {
     return restaurant.getOrder(orderId);
@@ -104,68 +112,68 @@ export const useRestaurant = () => {
     return restaurant.getTableByNumber(number);
   }, [restaurant]);
 
-  // Métodos de Menú
+  // MÉTODOS DE MENÚ - Sin cambios
   const addMenuItem = useCallback((item: Omit<MenuItem, 'id'>): MenuItem => {
-    console.log('🎣 Hook: Agregando item al menú');
     const menuItem = restaurant.addMenuItem(item);
     triggerUpdate();
     return menuItem;
   }, [restaurant, triggerUpdate]);
 
   const updateMenuItem = useCallback((item: MenuItem) => {
-    console.log('🎣 Hook: Actualizando item del menú');
     restaurant.updateMenuItem(item);
     triggerUpdate();
   }, [restaurant, triggerUpdate]);
 
   const deleteMenuItem = useCallback((itemId: string) => {
-    console.log('🎣 Hook: Eliminando item del menú');
     restaurant.deleteMenuItem(itemId);
     triggerUpdate();
   }, [restaurant, triggerUpdate]);
 
-  // 🔥 MÉTODOS DE GASTOS - LOCALSTORAGE DIRECTO (SIN USAR RESTAURANT)
-  const generateId = () => `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-
+  // MÉTODOS DE EXPENSES - Sin cambios
   const addExpense = useCallback((expense: Omit<Expense, 'id' | 'createdAt'>): Expense => {
-    console.log('🎣 Hook: Agregando gasto');
-    const newExpense: Expense = {
-      ...expense,
-      id: generateId(),
-      createdAt: new Date().toISOString()
-    };
-    
-    const updatedExpenses = [...expenses, newExpense];
-    saveExpenses(updatedExpenses);
+    const newExpense = restaurant.addExpense(expense);
+    console.log('💸 Expense agregado via hook:', newExpense.description, '₡' + newExpense.amount);
+    triggerUpdate();
     return newExpense;
-  }, [expenses, saveExpenses]);
+  }, [restaurant, triggerUpdate]);
 
-  const updateExpense = useCallback((updatedExpense: Expense) => {
-    console.log('🎣 Hook: Actualizando gasto');
-    const updatedExpenses = expenses.map(exp => 
-      exp.id === updatedExpense.id ? { ...updatedExpense, updatedAt: new Date().toISOString() } : exp
-    );
-    saveExpenses(updatedExpenses);
-  }, [expenses, saveExpenses]);
+  const updateExpense = useCallback((expense: Expense) => {
+    restaurant.updateExpense(expense);
+    console.log('✏️ Expense actualizado via hook:', expense.id);
+    triggerUpdate();
+  }, [restaurant, triggerUpdate]);
 
   const deleteExpense = useCallback((expenseId: string) => {
-    console.log('🎣 Hook: Eliminando gasto');
-    const updatedExpenses = expenses.filter(exp => exp.id !== expenseId);
-    saveExpenses(updatedExpenses);
-  }, [expenses, saveExpenses]);
+    restaurant.deleteExpense(expenseId);
+    console.log('🗑️ Expense eliminado via hook:', expenseId);
+    triggerUpdate();
+  }, [restaurant, triggerUpdate]);
 
-  const getExpensesByCategory = useCallback((expensesToUse?: Expense[]): Record<string, number> => {
-    const expenseList = expensesToUse || expenses;
-    return expenseList.reduce((acc, expense) => {
-      const amountInCRC = expense.currency === 'USD' ? expense.amount * 520 : expense.amount;
-      acc[expense.category] = (acc[expense.category] || 0) + amountInCRC;
-      return acc;
-    }, {} as Record<string, number>);
-  }, [expenses]);
+  const getTodaysExpenses = useCallback(() => {
+    return restaurant.getTodaysExpenses();
+  }, [restaurant]);
 
-  const getExpensesByType = useCallback((expensesToUse?: Expense[]): { gastos: number; inversiones: number } => {
-    const expenseList = expensesToUse || expenses;
-    return expenseList.reduce((acc, expense) => {
+  const getExpensesInPeriod = useCallback((startDate: string, endDate: string) => {
+    return restaurant.getExpensesByPeriod(startDate, endDate);
+  }, [restaurant]);
+
+  const getExpensesByCategory = useCallback((expenses?: Expense[]) => {
+    if (expenses) {
+      return expenses.reduce((acc, expense) => {
+        if (!acc[expense.category]) {
+          acc[expense.category] = 0;
+        }
+        const amountInCRC = expense.currency === 'USD' ? expense.amount * 520 : expense.amount;
+        acc[expense.category] += amountInCRC;
+        return acc;
+      }, {} as Record<string, number>);
+    }
+    return restaurant.getExpensesByCategory();
+  }, [restaurant]);
+
+  const getExpensesByType = useCallback((expenses?: Expense[]) => {
+    const expensesToAnalyze = expenses || restaurant.getExpenses();
+    return expensesToAnalyze.reduce((acc, expense) => {
       const amountInCRC = expense.currency === 'USD' ? expense.amount * 520 : expense.amount;
       if (expense.type === 'gasto') {
         acc.gastos += amountInCRC;
@@ -174,65 +182,103 @@ export const useRestaurant = () => {
       }
       return acc;
     }, { gastos: 0, inversiones: 0 });
-  }, [expenses]);
+  }, [restaurant]);
 
-  const getTodaysExpenses = useCallback((): Expense[] => {
-    const today = new Date().toISOString().split('T')[0];
-    return expenses.filter(expense => expense.date === today);
-  }, [expenses]);
+  // 🔥 NUEVOS MÉTODOS CRUD DE CIERRES
+  const editClosureRecord = useCallback((closureId: string, editData: ClosureEditData): ClosureOperationResult => {
+    console.log('✏️ Editando cierre via hook:', closureId);
+    const result = restaurant.editClosureRecord(closureId, editData);
+    if (result.success) {
+      triggerUpdate(); // Refrescar UI después de editar
+    }
+    return result;
+  }, [restaurant, triggerUpdate]);
 
-  const getExpensesInPeriod = useCallback((startDate: string, endDate: string): Expense[] => {
-    return expenses.filter(expense => 
-      expense.date >= startDate && expense.date <= endDate
-    );
-  }, [expenses]);
+  const deleteClosureRecord = useCallback((closureId: string, reason?: string): ClosureOperationResult => {
+    console.log('🗑️ Eliminando cierre via hook:', closureId);
+    const result = restaurant.deleteClosureRecord(closureId, reason);
+    if (result.success) {
+      triggerUpdate(); // Refrescar UI después de eliminar
+    }
+    return result;
+  }, [restaurant, triggerUpdate]);
 
-  // 🔥 ESTADÍSTICAS FINANCIERAS - IMPLEMENTACIÓN BÁSICA
+  const getDeletedClosures = useCallback(() => {
+    return restaurant.getDeletedClosures();
+  }, [restaurant]);
+
+  const restoreClosureRecord = useCallback((deletedClosureId: string): ClosureOperationResult => {
+    console.log('🔄 Restaurando cierre via hook:', deletedClosureId);
+    const result = restaurant.restoreClosureRecord(deletedClosureId);
+    if (result.success) {
+      triggerUpdate(); // Refrescar UI después de restaurar
+    }
+    return result;
+  }, [restaurant, triggerUpdate]);
+
+  // HISTORIAL DE CIERRES - Sin cambios
+  const getClosureHistory = useCallback(() => {
+    try {
+      const historyData = localStorage.getItem('fischer_closure_history');
+      if (historyData) {
+        const history = JSON.parse(historyData);
+        return history;
+      } else {
+        return [];
+      }
+    } catch (error) {
+      console.error('❌ Error cargando historial:', error);
+      return [];
+    }
+  }, []);
+
+  // ESTADÍSTICAS - ACTUALIZADO PARA PERÍODO QUINCENAL
   const getDailySummary = useCallback(() => {
-    const todayOrders = restaurant.getTodaysOrders().filter(order => order.status === 'paid');
-    const todayExpenses = getTodaysExpenses();
-    
-    const totalSales = todayOrders.reduce((sum, order) => sum + order.total, 0);
-    const totalExpenses = todayExpenses.reduce((sum, expense) => 
-      sum + (expense.currency === 'USD' ? expense.amount * 520 : expense.amount), 0
-    );
-    
-    return {
-      date: new Date().toISOString().split('T')[0],
-      totalSales,
-      totalOrders: todayOrders.length,
-      averageOrderValue: todayOrders.length > 0 ? totalSales / todayOrders.length : 0,
-      totalExpenses,
-      netProfit: totalSales - totalExpenses,
-      profitMargin: totalSales > 0 ? ((totalSales - totalExpenses) / totalSales) * 100 : 0,
-      expensesByCategory: getExpensesByCategory(todayExpenses),
-      expensesByType: getExpensesByType(todayExpenses)
-    };
-  }, [restaurant, getTodaysExpenses, getExpensesByCategory, getExpensesByType]);
+    // Para compatibilidad, usar período quincenal como default
+    return restaurant.getFinancialStats('biweekly');
+  }, [restaurant]);
 
-  const getFinancialStats = useCallback((period: 'today' | 'week' | 'month') => {
-    // Implementación básica
-    return getDailySummary();
-  }, [getDailySummary]);
+  // 🔥 MÉTODO ACTUALIZADO: Solo períodos quincenal y mensual
+  const getFinancialStats = useCallback((period: 'biweekly' | 'month') => {
+    return restaurant.getFinancialStats(period);
+  }, [restaurant]);
 
-  // Utilidades
+  const debugInfo = useCallback(() => {
+    const state = getRestaurantState();
+    console.log('🐛 DEBUG:', {
+      cashOpen: state.cashRegister.isOpen,
+      sales: state.cashRegister.totalSalesCRC,
+      orders: state.todaysOrders.length,
+      expenses: state.expenses.length
+    });
+    return state;
+  }, [getRestaurantState]);
+
   const refreshData = useCallback(() => {
-    console.log('🎣 Hook: Refrescando datos');
-    loadExpenses();
     triggerUpdate();
-  }, [triggerUpdate, loadExpenses]);
+  }, [triggerUpdate]);
+
+  // ESTADO UNIFICADO
+  const state = getRestaurantState();
 
   return {
-    // Estado
-    tables: restaurant.getTables(),
-    menuItems: restaurant.getMenuItems(),
-    cashRegister: restaurant.getCashRegister(),
-    expenses, // 🔥 Desde localStorage
+    // Estado unificado
+    tables: state.tables,
+    menuItems: state.menuItems,
+    cashRegister: state.cashRegister,
+    expenses: state.expenses,
     loading,
     
     // Métodos de Caja
     openCashRegister,
     closeCashRegister,
+    
+    // Métodos de Recovery System
+    detectInconsistentStates,
+    repairInconsistentStates,
+    freeTable,
+    cancelOrderAndFreeTable,
+    resetOrder,
     
     // Métodos de Órdenes
     createOrder,
@@ -247,7 +293,7 @@ export const useRestaurant = () => {
     updateMenuItem,
     deleteMenuItem,
     
-    // 🔥 Métodos de Gastos (localStorage directo)
+    // Métodos de Gastos
     addExpense,
     updateExpense,
     deleteExpense,
@@ -256,11 +302,21 @@ export const useRestaurant = () => {
     getTodaysExpenses,
     getExpensesInPeriod,
     
-    // 🔥 Estadísticas Financieras
+    // 🔥 NUEVOS MÉTODOS CRUD DE CIERRES
+    editClosureRecord,
+    deleteClosureRecord,
+    getDeletedClosures,
+    restoreClosureRecord,
+    
+    // Historial de Cierres
+    getClosureHistory,
+    
+    // 🔥 ESTADÍSTICAS FINANCIERAS ACTUALIZADAS (Solo quincenal y mensual)
     getDailySummary,
     getFinancialStats,
     
     // Utilidades
+    debugInfo,
     refreshData
   };
 };

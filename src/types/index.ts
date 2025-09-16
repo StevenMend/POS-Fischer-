@@ -1,4 +1,5 @@
-// Tipos principales del sistema POS - VERSIÓN UNIFICADA COMPLETA CON EXPENSES
+
+// Tipos principales del sistema POS - VERSIÓN ACTUALIZADA CON QUINCENAL + CRUD
 export interface Product {
   id: string;
   name: string;
@@ -36,7 +37,7 @@ export interface Table {
   currentOrder?: Order;
 }
 
-// 🔥 EXPENSES - NUEVA INTEGRACIÓN COMPLETA
+// EXPENSES - Estructura existente
 export interface Expense {
   id: string;
   description: string;
@@ -56,31 +57,20 @@ export interface ExpenseCategory {
   color: string;
 }
 
-// 🔥 CASHREGISTER CORREGIDO - SEPARACIÓN DE CONCEPTOS
+// CASHREGISTER - Estructura existente
 export interface CashRegister {
-  // 🏦 ESTADO OPERATIVO
   isOpen: boolean;
-  
-  // 💰 DINERO FÍSICO BASE (para vueltos)
-  openingCashCRC: number;     // Dinero inicial puesto al abrir
-  openingCashUSD: number;     // Dinero inicial puesto al abrir
-  
-  // 💰 DINERO FÍSICO ACTUAL (base + efectivo de ventas)
-  currentCashCRC: number;     // Dinero físico total en caja
-  currentCashUSD: number;     // Dinero físico total en caja
-  
-  // 📊 VENTAS DEL DÍA (separadas del dinero físico)
-  totalSalesCRC: number;      // Solo ingresos por ventas
-  totalSalesUSD: number;      // Solo ingresos por ventas
-  totalOrders: number;        // Órdenes procesadas hoy
-  
-  // 💳 DESGLOSE DE PAGOS DEL DÍA (para análisis)
-  cashPaymentsCRC: number;    // Efectivo recibido en ventas
-  cashPaymentsUSD: number;    // Efectivo recibido en ventas
-  cardPaymentsCRC: number;    // Tarjetas procesadas
-  cardPaymentsUSD: number;    // Tarjetas procesadas
-  
-  // 📅 TIMESTAMPS
+  openingCashCRC: number;
+  openingCashUSD: number;
+  currentCashCRC: number;
+  currentCashUSD: number;
+  totalSalesCRC: number;
+  totalSalesUSD: number;
+  totalOrders: number;
+  cashPaymentsCRC: number;
+  cashPaymentsUSD: number;
+  cardPaymentsCRC: number;
+  cardPaymentsUSD: number;
   openedAt?: Date;
   closedAt?: Date;
 }
@@ -97,60 +87,59 @@ export interface Payment {
   amount: number;
   currency: Currency;
   method: PaymentMethod;
-  received?: number;  // Para pagos en efectivo
-  change?: number;    // Para pagos en efectivo
+  received?: number;
+  change?: number;
   timestamp: Date;
 }
 
-// 🔥 DAILY SUMMARY - Para compatibilidad con Reports existente
+// DAILY SUMMARY - Estructura existente
 export interface DailySummary {
   date: string;
-  
-  // 💰 INGRESOS
-  totalSales: number;         // Total combinado en CRC
+  totalSales: number;
   totalOrders: number;
   averageOrderValue: number;
-  
-  // 💳 MÉTODOS DE PAGO
   paymentMethods: {
     cashCRC: number;
     cashUSD: number;
     cardCRC: number;
     cardUSD: number;
   };
-  
-  // 💰 ESTADO DE CAJA
-  openingCash: number;        // Dinero inicial
-  closingCash: number;        // Dinero final físico
-  cashFromSales: number;      // Efectivo recibido por ventas
+  openingCash: number;
+  closingCash: number;
+  cashFromSales: number;
 }
 
-// 🔥 DAILY RECORD - ESTRUCTURA EXACTA que espera ClosureHistory
+// DAILY RECORD - Estructura existente CON ÓRDENES DETALLADAS
 export interface DailyRecord {
   id: string;
   date: string;
-  
-  // 💰 DINERO FÍSICO - NOMBRES EXACTOS de ClosureHistory
-  openingCashCRC: number;     // Dinero inicial puesto
-  openingCashUSD: number;     // Dinero inicial puesto
-  closingCashCRC: number;     // Dinero físico final
-  closingCashUSD: number;     // Dinero físico final
-  
-  // 📊 VENTAS DEL DÍA - NOMBRES EXACTOS de ClosureHistory
-  totalSalesCRC: number;      // Ingresos por ventas
-  totalSalesUSD: number;      // Ingresos por ventas
-  totalOrders: number;        // Órdenes procesadas
-  averageOrderValue: number;  // Promedio por orden
-  
-  // 💳 MÉTODOS DE PAGO - NOMBRES EXACTOS de ClosureHistory
-  cashPaymentsCRC: number;    // Efectivo recibido en ventas
-  cashPaymentsUSD: number;    // Efectivo recibido en ventas
-  cardPaymentsCRC: number;    // Tarjetas procesadas
-  cardPaymentsUSD: number;    // Tarjetas procesadas
-  
-  // 📅 TIMESTAMPS - FORMATO EXACTO de ClosureHistory
+  openingCashCRC: number;
+  openingCashUSD: number;
+  closingCashCRC: number;
+  closingCashUSD: number;
+  totalSalesCRC: number;
+  totalSalesUSD: number;
+  totalOrders: number;
+  averageOrderValue: number;
+  cashPaymentsCRC: number;
+  cashPaymentsUSD: number;
+  cardPaymentsCRC: number;
+  cardPaymentsUSD: number;
   openedAt: string;
   closedAt: string;
+  // 🔥 NUEVO: Agregar al DailyRecord existente:
+  ordersDetails?: Array<{
+    orderId: string;
+    tableNumber: number;
+    items: Array<{
+      name: string;
+      quantity: number;
+      price: number;
+    }>;
+    total: number;
+    createdAt: string;
+    paymentMethod: 'cash' | 'card';
+  }>;
 }
 
 export interface Currency {
@@ -159,7 +148,6 @@ export interface Currency {
   exchangeRate: number;
 }
 
-// Re-export de MenuItem para compatibilidad
 export interface MenuItem {
   id: string;
   name: string;
@@ -170,37 +158,36 @@ export interface MenuItem {
   image?: string;
 }
 
-// Tipo union para monedas
 export type CurrencyCode = 'USD' | 'CRC';
 
-// 🔥 FINANCIAL STATS - Para reportes SEMANALES/MENSUALES
+// 🔥 FINANCIAL STATS - ACTUALIZADO CON PERÍODO QUINCENAL
 export interface FinancialStats {
-  period: 'week' | 'month';        // Eliminado 'today' - solo semanal/mensual
+  period: 'biweekly' | 'month';  // 🔥 CAMBIO: Eliminado 'week', agregado 'biweekly'
   startDate: string;
   endDate: string;
   
-  // 💰 INGRESOS (de múltiples cierres)
+  // INGRESOS (de múltiples cierres)
   totalIncome: number;
   ordersCount: number;
   averageOrderValue: number;
-  closuresCount: number;           // Cantidad de días operados
+  closuresCount: number;           // Cantidad de días operados reales
   
-  // 💸 GASTOS (acumulados del período)
+  // GASTOS (acumulados del período)
   totalExpenses: number;
   expensesCount: number;
-  totalGastos: number;             // Solo gastos operativos
-  totalInversiones: number;        // Solo inversiones
+  totalGastos: number;
+  totalInversiones: number;
   
-  // 📈 RENTABILIDAD
+  // RENTABILIDAD
   netProfit: number;
   profitMargin: number;
   efficiency: 'excelente' | 'buena' | 'mejorable';
   
-  // 📊 PROMEDIOS DIARIOS
-  dailyAverageIncome: number;      // Promedio de ingresos por día
-  dailyAverageExpenses: number;    // Promedio de gastos por día
+  // PROMEDIOS DIARIOS
+  dailyAverageIncome: number;
+  dailyAverageExpenses: number;
   
-  // 📋 BREAKDOWN
+  // BREAKDOWN
   expensesByCategory: Record<string, number>;
   topExpenseCategories: Array<{
     category: string;
@@ -208,9 +195,71 @@ export interface FinancialStats {
     percentage: number;
   }>;
   
-  // ⚠️ ALERTAS
+  // ALERTAS
   alerts: Array<{
     type: 'info' | 'warning' | 'critical';
     message: string;
   }>;
+}
+
+// 🔥 NUEVOS TIPOS PARA CRUD DE CIERRES
+export interface ClosureEditData {
+  id: string;
+  openingCashCRC?: number;
+  openingCashUSD?: number;
+  closingCashCRC?: number;
+  closingCashUSD?: number;
+  notes?: string;
+}
+
+export interface ClosureOperationResult {
+  success: boolean;
+  message: string;
+  updatedRecord?: DailyRecord;
+}
+
+export interface ClosureValidation {
+  isValid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+// BLUETOOTH PRINTER SYSTEM - Sin cambios
+export interface BluetoothPrinter {
+  id: string;
+  name: string;
+  connected: boolean;
+  device?: BluetoothDevice;
+  characteristic?: BluetoothRemoteGATTCharacteristic;
+  rssi?: number;
+  lastSeen?: Date;
+  model?: string;
+}
+
+export interface CompanyInfo {
+  name: string;
+  address: string;
+  phone: string;
+  email?: string;
+  taxId: string;
+  website?: string;
+  logoBase64?: string;
+}
+
+export interface PrinterSettings {
+  paperWidth: number;
+  fontSize: 'small' | 'normal' | 'large';
+  density: number;
+  cutPaper: boolean;
+  cashDrawer: boolean;
+  encoding: 'utf8' | 'latin1';
+}
+
+export interface ReceiptData {
+  company: CompanyInfo;
+  order: Order;
+  payment: Payment;
+  receiptNumber: string;
+  timestamp: Date;
+  settings: PrinterSettings;
 }
