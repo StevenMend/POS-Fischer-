@@ -231,8 +231,8 @@ const Dashboard: React.FC<DashboardProps> = ({
               </div>
             </div>
           </div>
-
-          {/* 🔥 VENTAS DEL DÍA - DISEÑO MEJORADO */}
+{/* 
+          🔥 VENTAS DEL DÍA - DISEÑO MEJORADO */}
           <div className="bg-white/80 backdrop-blur-xl rounded-2xl shadow-xl border border-white/30 p-6 hover:shadow-2xl transition-all duration-300 hover:scale-[1.02]">
             <div className="flex items-start justify-between mb-4">
               <div className="flex-1">

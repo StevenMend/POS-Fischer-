@@ -1,4 +1,3 @@
-
 // Tipos principales del sistema POS - VERSIÓN ACTUALIZADA CON QUINCENAL + CRUD
 export interface Product {
   id: string;
@@ -27,8 +26,12 @@ export interface Order {
   createdAt: Date;
   updatedAt: Date;
   notes?: string;
+  discount?: OrderDiscount;  // 🔥 NUEVO
+  splitPayments?: SplitPayment[];  // 🔥 NUEVO
+  tableNumber: number;  // 🔥 NECESARIO para impresión
+  subtotal: number;  // 🔥 NECESARIO para impresión
+  serviceCharge: number;  // 🔥 NECESARIO para impresión
 }
-
 export interface Table {
   id: string;
   number: number;
@@ -263,3 +266,71 @@ export interface ReceiptData {
   timestamp: Date;
   settings: PrinterSettings;
 }
+// 🔥 TIPOS FALTANTES PARA DESCUENTOS Y SPLITS
+
+export interface OrderDiscount {
+  type: 'remove_service' | 'percent_10' | 'percent_12' | 'percent_15';
+  amount: number;
+  reason: string;
+  authorizedBy: string; // PIN usado
+  appliedAt: Date;
+}
+
+export interface SplitPayment {
+  personNumber: number;
+  amount: number;
+  method: 'cash' | 'card';
+  currency: 'CRC' | 'USD';
+}
+// types/index.ts - AGREGAR estos tipos al archivo existente
+
+// ... tipos existentes ...
+
+export interface ItemAssignment {
+  itemId: string;
+  itemName: string;
+  personNumber: number;
+  quantity: number;        // Puede ser fracción: 0.5, 1, 2, etc.
+  pricePerUnit: number;
+  subtotal: number;
+}
+
+export interface PersonAccount {
+  personNumber: number;
+  items: ItemAssignment[];
+  subtotal: number;
+  serviceCharge: number;
+  total: number;
+  paid: boolean;
+  paymentId?: string;
+  paidAt?: Date;
+  paymentMethod?: 'cash' | 'card';
+  paymentCurrency?: 'CRC' | 'USD';
+}
+
+export interface ManualSplit {
+  type: 'manual';
+  totalPeople: number;
+  assignments: ItemAssignment[];
+  personAccounts: PersonAccount[];
+  createdAt: Date;
+  allPaid: boolean;
+}
+
+// Extender Order para incluir ManualSplit
+export interface Order {
+  id: string;
+  tableNumber: number;
+  items: OrderItem[];
+  subtotal: number;
+  serviceCharge: number;
+  total: number;
+  status: 'pending' | 'confirmed' | 'paid' | 'cancelled';
+  createdAt: Date;
+  updatedAt: Date;
+  discount?: OrderDiscount;
+  splitPayments?: SplitPayment[];  // División equitativa
+  manualSplit?: ManualSplit;       // 🆕 División manual por artículos
+}
+
+// ... resto de tipos existentes ...

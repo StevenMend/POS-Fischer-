@@ -1,5 +1,5 @@
 // Utilidades para manejo de monedas
-export const EXCHANGE_RATE = 520; // 1 USD = 520 CRC (actualizable)
+export const EXCHANGE_RATE = 490; 
 
 export const formatCurrency = (amount: number, currency: 'USD' | 'CRC'): string => {
   if (currency === 'USD') {

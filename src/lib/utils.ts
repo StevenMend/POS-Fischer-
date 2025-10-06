@@ -1,5 +1,5 @@
 // Constantes del sistema
-const EXCHANGE_RATE = 520; // 1 USD = 520 CRC
+const EXCHANGE_RATE = 490; // 1 USD = 520 CRC
 const SERVICE_CHARGE_RATE = 0.10; // 10%
 
 const CURRENCY_SYMBOLS = {

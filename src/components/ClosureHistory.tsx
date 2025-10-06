@@ -18,13 +18,13 @@ import {
   CheckCircle,
   RotateCcw
 } from 'lucide-react';
-
-// 🔥 PROPS ACTUALIZADAS CON MÉTODOS CRUD
+import PinPrompt from '../lib/auth/PinPrompt';
+import { hasPinConfigured } from '../lib/auth/pinManager';
+// Interfaces
 interface ClosureHistoryProps {
   onBack: () => void;
   closureHistory?: any[];
   getClosureHistory?: () => any[];
-  // 🔥 NUEVOS MÉTODOS CRUD
   editClosureRecord?: (closureId: string, editData: ClosureEditData) => ClosureOperationResult;
   deleteClosureRecord?: (closureId: string, reason?: string) => ClosureOperationResult;
   getDeletedClosures?: () => any[];
@@ -53,7 +53,6 @@ interface DailyRecord {
     changes: any;
     reason: string;
   }>;
-  // 🔥 AGREGAR ESTA LÍNEA:
   ordersDetails?: Array<{
     orderId: string;
     tableNumber: number;
@@ -66,6 +65,8 @@ interface DailyRecord {
     createdAt: string;
     paymentMethod: 'cash' | 'card';
   }>;
+  deletedAt?: string;
+  deleteReason?: string;
 }
 
 interface ClosureEditData {
@@ -83,6 +84,15 @@ interface ClosureOperationResult {
   updatedRecord?: DailyRecord;
 }
 
+type PendingActionType = 'edit' | 'delete';
+
+interface PendingAction {
+  type: PendingActionType;
+  data: any;
+}
+
+const MAX_EDIT_DAYS = 30;
+
 const ClosureHistory: React.FC<ClosureHistoryProps> = ({ 
   onBack,
   closureHistory,
@@ -92,26 +102,32 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
   getDeletedClosures,
   restoreClosureRecord
 }) => {
+  // Main state
   const [records, setRecords] = useState<DailyRecord[]>([]);
   const [filteredRecords, setFilteredRecords] = useState<DailyRecord[]>([]);
   const [deletedRecords, setDeletedRecords] = useState<DailyRecord[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<DailyRecord | null>(null);
+  
+  // Filter state
   const [dateFilter, setDateFilter] = useState('');
   const [sortBy, setSortBy] = useState<'date' | 'sales' | 'orders'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   
-  // 🔥 ESTADOS PARA CRUD
+  // CRUD state
   const [editingRecord, setEditingRecord] = useState<DailyRecord | null>(null);
   const [editForm, setEditForm] = useState<ClosureEditData>({} as ClosureEditData);
   const [showDeletedRecords, setShowDeletedRecords] = useState(false);
   const [operationResult, setOperationResult] = useState<ClosureOperationResult | null>(null);
+  
+  // PIN protection state
+  const [showPinPrompt, setShowPinPrompt] = useState(false);
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 
-  // Cargar historial y registros eliminados
+  // Load data
   useEffect(() => {
     let history: any[] = [];
     let deleted: any[] = [];
     
-    // Cargar historial principal
     if (closureHistory && closureHistory.length > 0) {
       history = closureHistory;
     } else if (getClosureHistory) {
@@ -123,7 +139,6 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
       }
     }
     
-    // Cargar registros eliminados si hay método disponible
     if (getDeletedClosures) {
       deleted = getDeletedClosures();
     }
@@ -133,7 +148,7 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
     setDeletedRecords(deleted);
   }, [closureHistory, getClosureHistory, getDeletedClosures]);
 
-  // Filtrar registros
+  // Filter and sort
   useEffect(() => {
     let filtered = [...records];
 
@@ -166,7 +181,7 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
     setFilteredRecords(filtered);
   }, [records, dateFilter, sortBy, sortOrder]);
 
-  // Limpiar resultado de operación después de 5 segundos
+  // Clear operation result after 5 seconds
   useEffect(() => {
     if (operationResult) {
       const timer = setTimeout(() => {
@@ -176,6 +191,7 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
     }
   }, [operationResult]);
 
+  // Utility functions
   const formatCurrency = (amount: number) => {
     return `₡${Math.round(amount).toLocaleString('es-CR')}`;
   };
@@ -190,6 +206,16 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
       month: 'long',
       day: 'numeric'
     });
+  };
+
+  const getDaysDifference = (dateString: string): number => {
+    const recordDate = new Date(dateString);
+    const today = new Date();
+    return Math.floor((today.getTime() - recordDate.getTime()) / (1000 * 60 * 60 * 24));
+  };
+
+  const canModifyRecord = (dateString: string): boolean => {
+    return getDaysDifference(dateString) <= MAX_EDIT_DAYS;
   };
 
   const getTrend = (current: number, previous: number) => {
@@ -218,31 +244,95 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
     return { totalSales, totalOrders, averageDailySales, bestDay };
   };
 
-  // 🔥 FUNCIONES CRUD
-  const handleStartEdit = (record: DailyRecord) => {
-    setEditingRecord(record);
-    setEditForm({
-      id: record.id,
-      openingCashCRC: record.openingCashCRC,
-      openingCashUSD: record.openingCashUSD,
-      closingCashCRC: record.closingCashCRC,
-      closingCashUSD: record.closingCashUSD,
-      notes: ''
-    });
+  const refreshData = () => {
+    if (getClosureHistory) {
+      setRecords(getClosureHistory());
+    }
+    if (getDeletedClosures) {
+      setDeletedRecords(getDeletedClosures());
+    }
   };
 
-  const handleSaveEdit = async () => {
+  // Protected CRUD handlers
+  const handleStartEdit = (record: DailyRecord) => {
+    if (!hasPinConfigured()) {
+      alert('⚠️ No hay PIN configurado. Contacta al administrador.');
+      return;
+    }
+    
+    if (!canModifyRecord(record.date)) {
+      alert(`⚠️ No se pueden editar cierres de más de ${MAX_EDIT_DAYS} días de antigüedad.`);
+      return;
+    }
+    
+    setPendingAction({ type: 'edit', data: record });
+    setShowPinPrompt(true);
+  };
+
+  const handleDelete = (record: DailyRecord) => {
+    if (!deleteClosureRecord) return;
+    
+    if (!hasPinConfigured()) {
+      alert('⚠️ No hay PIN configurado. Contacta al administrador.');
+      return;
+    }
+    
+    if (!canModifyRecord(record.date)) {
+      alert(`⚠️ No se pueden eliminar cierres de más de ${MAX_EDIT_DAYS} días de antigüedad.`);
+      return;
+    }
+
+    const reason = prompt('Razón para eliminar este cierre (opcional):') || 'Eliminado por usuario';
+    
+    if (window.confirm(`¿Estás seguro de eliminar el cierre del ${formatDate(record.date)}? Esta acción se puede deshacer.`)) {
+      setPendingAction({ type: 'delete', data: { record, reason } });
+      setShowPinPrompt(true);
+    }
+  };
+
+  // Post-PIN handlers
+  const handlePinSuccess = () => {
+    if (!pendingAction) return;
+    
+    if (pendingAction.type === 'edit') {
+      const record = pendingAction.data;
+      setEditingRecord(record);
+      setEditForm({
+        id: record.id,
+        openingCashCRC: record.openingCashCRC,
+        openingCashUSD: record.openingCashUSD,
+        closingCashCRC: record.closingCashCRC,
+        closingCashUSD: record.closingCashUSD,
+        notes: ''
+      });
+    } else if (pendingAction.type === 'delete' && deleteClosureRecord) {
+      const { record, reason } = pendingAction.data;
+      const result = deleteClosureRecord(record.id, reason);
+      setOperationResult(result);
+      
+      if (result.success) {
+        refreshData();
+      }
+    }
+    
+    setPendingAction(null);
+    setShowPinPrompt(false);
+  };
+
+  const handlePinCancel = () => {
+    setShowPinPrompt(false);
+    setPendingAction(null);
+  };
+
+  // Standard CRUD handlers (non-protected)
+  const handleSaveEdit = () => {
     if (!editClosureRecord || !editingRecord) return;
 
     const result = editClosureRecord(editingRecord.id, editForm);
     setOperationResult(result);
     
     if (result.success) {
-      // Recargar datos
-      if (getClosureHistory) {
-        const updatedHistory = getClosureHistory();
-        setRecords(updatedHistory);
-      }
+      refreshData();
       setEditingRecord(null);
       setEditForm({} as ClosureEditData);
     }
@@ -253,30 +343,7 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
     setEditForm({} as ClosureEditData);
   };
 
-  const handleDelete = async (record: DailyRecord) => {
-    if (!deleteClosureRecord) return;
-
-    const reason = prompt('Razón para eliminar este cierre (opcional):') || 'Eliminado por usuario';
-    
-    if (window.confirm(`¿Estás seguro de eliminar el cierre del ${formatDate(record.date)}? Esta acción se puede deshacer.`)) {
-      const result = deleteClosureRecord(record.id, reason);
-      setOperationResult(result);
-      
-      if (result.success) {
-        // Recargar datos
-        if (getClosureHistory) {
-          const updatedHistory = getClosureHistory();
-          setRecords(updatedHistory);
-        }
-        if (getDeletedClosures) {
-          const updatedDeleted = getDeletedClosures();
-          setDeletedRecords(updatedDeleted);
-        }
-      }
-    }
-  };
-
-  const handleRestore = async (deletedRecord: DailyRecord) => {
+  const handleRestore = (deletedRecord: DailyRecord) => {
     if (!restoreClosureRecord) return;
 
     if (window.confirm(`¿Restaurar el cierre del ${formatDate(deletedRecord.date)}?`)) {
@@ -284,15 +351,7 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
       setOperationResult(result);
       
       if (result.success) {
-        // Recargar datos
-        if (getClosureHistory) {
-          const updatedHistory = getClosureHistory();
-          setRecords(updatedHistory);
-        }
-        if (getDeletedClosures) {
-          const updatedDeleted = getDeletedClosures();
-          setDeletedRecords(updatedDeleted);
-        }
+        refreshData();
       }
     }
   };
@@ -301,7 +360,7 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
-      {/* Header Premium */}
+      {/* Header */}
       <div className="bg-white/80 backdrop-blur-xl border-b border-white/20 shadow-lg">
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
@@ -335,7 +394,6 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
             </div>
             
             <div className="flex items-center space-x-4">
-              {/* Toggle para mostrar eliminados */}
               {deletedRecords.length > 0 && (
                 <button
                   onClick={() => setShowDeletedRecords(!showDeletedRecords)}
@@ -358,7 +416,7 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
         </div>
       </div>
 
-      {/* 🔥 NOTIFICACIÓN DE RESULTADO DE OPERACIONES */}
+      {/* Operation Result Notification */}
       {operationResult && (
         <div className={`mx-6 mt-4 p-4 rounded-xl border ${
           operationResult.success 
@@ -379,7 +437,7 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
       <div className="max-w-7xl mx-auto p-6">
         {!showDeletedRecords ? (
           <>
-            {/* Filtros y Controles */}
+            {/* Filters */}
             <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-6 mb-8">
               <div className="flex flex-wrap items-center gap-4">
                 <div className="flex items-center space-x-2">
@@ -416,7 +474,7 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
               </div>
             </div>
 
-            {/* Estadísticas Generales */}
+            {/* Stats */}
             {stats && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-xl border border-white/20 p-6">
@@ -476,7 +534,7 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
               </div>
             )}
 
-            {/* Lista de Registros con CRUD */}
+            {/* Records List */}
             <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/20 p-8">
               <h2 className="text-2xl font-bold text-slate-800 mb-8 flex items-center">
                 <Calendar className="w-7 h-7 mr-3 text-purple-600" />
@@ -512,7 +570,6 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
                         }`}
                       >
                         {isEditing ? (
-                          // 🔥 MODO EDICIÓN
                           <div className="space-y-4">
                             <div className="flex items-center justify-between">
                               <h3 className="text-lg font-bold text-slate-800">
@@ -614,7 +671,6 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
                             </div>
                           </div>
                         ) : (
-                          // 🔥 MODO VISUALIZACIÓN CON BOTONES CRUD
                           <div className="flex justify-between items-center">
                             <div className="flex items-center space-x-4">
                               <div className="p-3 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl">
@@ -626,12 +682,6 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
                                   {record.totalOrders} órdenes • Promedio: {formatCurrency(record.averageOrderValue)}
                                 </p>
                                 <div className="flex items-center space-x-2 mt-1">
-                                  {salesTrend.trend === 'up' && (
-                                    <div className="flex items-center text-green-600 text-xs">
-                                      <TrendingUp className="w-3 h-3 mr-1" />
-                                      +{salesTrend.percentage.toFixed(1)}%
-                                    </div>
-                                  )}
                                   {salesTrend.trend === 'down' && (
                                     <div className="flex items-center text-red-600 text-xs">
                                       <TrendingDown className="w-3 h-3 mr-1" />
@@ -658,7 +708,6 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
                                 </div>
                               </div>
                               
-                              {/* 🔥 BOTONES CRUD */}
                               <div className="flex space-x-2">
                                 <button
                                   onClick={() => setSelectedRecord(record)}
@@ -699,7 +748,6 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
             </div>
           </>
         ) : (
-          // 🔥 VISTA DE REGISTROS ELIMINADOS
           <div className="bg-white/70 backdrop-blur-xl rounded-3xl shadow-2xl border border-red-200 p-8">
             <h2 className="text-2xl font-bold text-red-800 mb-8 flex items-center">
               <Trash2 className="w-7 h-7 mr-3 text-red-600" />
@@ -728,7 +776,7 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
                       <div>
                         <p className="font-bold text-red-800 text-lg">{formatDate(record.date)}</p>
                         <p className="text-sm text-red-600">
-                          Eliminado: {new Date(record.deletedAt).toLocaleDateString('es-CR')}
+                          Eliminado: {record.deletedAt ? new Date(record.deletedAt).toLocaleDateString('es-CR') : 'N/A'}
                         </p>
                         <p className="text-xs text-red-500">
                           Razón: {record.deleteReason || 'Sin especificar'}
@@ -765,7 +813,7 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
         )}
       </div>
 
-      {/* Modal de Detalles - Mejorado CON ÓRDENES DEL DÍA */}
+      {/* Details Modal */}
       {selectedRecord && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white/90 backdrop-blur-xl rounded-3xl w-full max-w-2xl shadow-2xl border border-white/20 max-h-[90vh] overflow-y-auto">
@@ -782,7 +830,6 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
             </div>
 
             <div className="p-8 space-y-6">
-              {/* Horarios */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-4 border border-green-200">
                   <p className="text-sm font-medium text-green-800 mb-1">Apertura</p>
@@ -798,7 +845,6 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
                 </div>
               </div>
 
-              {/* Caja */}
               <div className="space-y-4">
                 <h4 className="text-lg font-bold text-slate-800">Estado de Caja</h4>
                 <div className="grid grid-cols-2 gap-4">
@@ -837,7 +883,6 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
                 </div>
               </div>
 
-              {/* Ventas */}
               <div className="space-y-4">
                 <h4 className="text-lg font-bold text-slate-800">Resumen de Ventas</h4>
                 <div className="grid grid-cols-2 gap-4">
@@ -858,7 +903,6 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
                 </div>
               </div>
 
-              {/* 🔥 NUEVO: ÓRDENES DEL DÍA */}
               {selectedRecord.ordersDetails && selectedRecord.ordersDetails.length > 0 && (
                 <div className="space-y-4">
                   <h4 className="text-lg font-bold text-slate-800">Órdenes del Día</h4>
@@ -881,7 +925,6 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
                 </div>
               )}
 
-              {/* Historial de Ediciones */}
               {selectedRecord.editHistory && selectedRecord.editHistory.length > 0 && (
                 <div className="space-y-4">
                   <h4 className="text-lg font-bold text-slate-800">Historial de Ediciones</h4>
@@ -900,7 +943,6 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
                 </div>
               )}
 
-              {/* Total */}
               <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-2xl p-6 border border-emerald-200">
                 <div className="flex justify-between items-center">
                   <div>
@@ -921,6 +963,19 @@ const ClosureHistory: React.FC<ClosureHistoryProps> = ({
           </div>
         </div>
       )}
+
+      {/* PIN Protection Modal */}
+      <PinPrompt
+        isOpen={showPinPrompt}
+        onClose={handlePinCancel}
+        onSuccess={handlePinSuccess}
+        title={pendingAction?.type === 'edit' ? 'Autorizar Edición' : 'Autorizar Eliminación'}
+        description={
+          pendingAction?.type === 'edit' 
+            ? 'Editando registro de cierre' 
+            : 'Eliminando registro de cierre'
+        }
+      />
     </div>
   );
 };
